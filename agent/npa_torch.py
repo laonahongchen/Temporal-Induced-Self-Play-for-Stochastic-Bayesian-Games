@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch.distributions import Categorical
 import gym
 import numpy as np
+import gc
+import math
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device("cpu")
@@ -23,6 +25,7 @@ class Memory:
         del self.rewards[:]
         del self.is_terminals[:]
         del self.type_obs[:]
+        gc.collect()
     
     def first_step(self, reward):
         ret = Memory()
@@ -55,8 +58,8 @@ class ActorCritic(nn.Module):
                 nn.Tanh(),
                 # nn.Linear(n_latent_var, n_latent_var),
                 # nn.Tanh(),
-                nn.Linear(n_latent_var, n_latent_var),
-                nn.Tanh(),
+                # nn.Linear(n_latent_var, n_latent_var),
+                # nn.Tanh(),
                 nn.Linear(n_latent_var, action_dim),
                 nn.Softmax(dim=-1)
                 )
@@ -67,8 +70,8 @@ class ActorCritic(nn.Module):
                 nn.Tanh(),
                 # nn.Linear(n_latent_var, n_latent_var),
                 # nn.Tanh(),
-                nn.Linear(n_latent_var, n_latent_var),
-                nn.Tanh(),
+                # nn.Linear(n_latent_var, n_latent_var),
+                # nn.Tanh(),
                 nn.Linear(n_latent_var, 1)
                 )
         
@@ -117,12 +120,13 @@ class ActorCritic(nn.Module):
         return action_probs, state_value, action_logprobs, dist_entropy # action_logprobs, torch.squeeze(state_value), dist_entropy, action_prob
         
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, type_dim = 0, entcoeff = 0.01, valuecoeff=0.5, entcoeff_decay = 1.):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0., valuecoeff=1., entcoeff_decay = 1.):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
+        self.minibatch = minibatch
         
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var, type_dim).to(device)
         # self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
@@ -168,37 +172,54 @@ class PPO:
         # print(old_actions)
         tot_value_loss = 0
         tot_loss = 0
+        cnt_opt = 0
+
+        # print('reward shape')
+        # print(rewards.shape[0])
         
         # Optimize policy for K epochs:
         for _ in range(self.K_epochs):
             # Evaluating old actions and values :
-            _, state_values, logprobs, dist_entropy = self.policy.evaluate(old_states, old_actions, old_types)
+            _, state_values, _, _ = self.policy.evaluate(old_states, old_actions, old_types)
 
             state_values = torch.squeeze(state_values)
             
-            # Finding the ratio (pi_theta / pi_theta__old):
-            ratios = torch.exp(logprobs - old_logprobs.detach())
                 
             # Finding Surrogate Loss:
             advantages = rewards - state_values.detach()
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
-            cur_value_loss = self.MseLoss(state_values, rewards)
+            if do_normalize:
+                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
-            loss = -torch.min(surr1, surr2) + self.valuecoeff*cur_value_loss - self.entcoeff*dist_entropy
+            for i_minibatch in range(math.ceil(rewards.shape[0] * 1. / self.minibatch)):
+                # print('i minibatch:')
+                # print(i_minibatch)
+                # minibatch_idx = i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch
+                cur_adv = advantages[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach()
 
-            self.entcoeff *= self.entcoeff_decay
+                _, state_values, logprobs, dist_entropy = self.policy.evaluate(old_states[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch], old_actions[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch], old_types[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
+                # Finding the ratio (pi_theta / pi_theta__old):
+                ratios = torch.exp(logprobs - old_logprobs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach())
 
-            # print('cur value loss:')
-            # print(loss)
-            tot_value_loss += cur_value_loss
-            tot_loss += loss.mean()
-            
-            # take gradient step
-            self.optimizer.zero_grad()
-            loss.mean().backward()
-            self.optimizer.step()
+                surr1 = ratios * cur_adv
+                surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * cur_adv
+
+                cur_value_loss = self.MseLoss(state_values, rewards[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
+
+                loss = -torch.min(surr1, surr2) + self.valuecoeff*cur_value_loss - self.entcoeff*dist_entropy
+
+                self.entcoeff *= self.entcoeff_decay
+
+                # print('cur value loss:')
+                # print(loss)
+                tot_value_loss += cur_value_loss
+                tot_loss += loss.mean()
+                cnt_opt += 1
+                
+                # take gradient step
+                self.optimizer.zero_grad()
+                loss.mean().backward()
+                self.optimizer.step()
         
         # Copy new weights into old policy:
         # self.policy_old.load_state_dict(self.policy.state_dict())
@@ -208,7 +229,7 @@ class PPO:
             sdb[key] = (sdb[key] * self.policy_old_weight + sda[key]) / (self.policy_old_weight + 1)
         self.policy_old_weight += 1
         self.policy_old.load_state_dict(sdb)
-        return tot_value_loss / self.K_epochs, tot_loss / self.K_epochs
+        return tot_value_loss / cnt_opt, tot_loss / cnt_opt
 
 def calc_dis(a, b):
     # print('prepare to calcu dis:')

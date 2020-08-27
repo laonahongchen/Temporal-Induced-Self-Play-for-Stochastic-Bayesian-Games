@@ -30,7 +30,7 @@ def one_hot(n, i):
     return x
 
 class NaiveController():
-    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, seed=None):
+    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, seed=None):
     ############## Hyperparameters ##############
         # env_name = "LunarLander-v2"
         # creating environment
@@ -45,6 +45,7 @@ class NaiveController():
         self.n_steps = n_steps         # max timesteps in one episode
         self.n_latent_var = network_width           # number of variables in hidden layer
         self.update_timestep = batch_size      # update policy every n timesteps
+        self.minibatch = minibatch
         self.lr = lr
         self.betas = betas
         self.gamma = gamma                # discount factor
@@ -91,7 +92,7 @@ class NaiveController():
             memory = Memory()
             state_dim = self.env.observation_spaces[i].shape[0]
             action_dim = self.env.action_spaces[i].n
-            ppo = NPAAgent(self.env.n_steps, self.n_belief_n[i], self.beliefs_n[i], state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.env.n_targets)
+            ppo = NPAAgent(self.env.n_steps, self.n_belief_n[i], self.beliefs_n[i], state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets)
                 # curmemory.append(memory)
                 # curppo.append(ppo)
             self.memorys.append(memory)
@@ -176,12 +177,17 @@ class NaiveController():
                             start_num = -1
                             if t == substep:
                                 start_num = b
+                            start_nums = [self.env.atk_type, start_num]
 
                             # for i in range(self.env.n_agents):
                             action, _ = self.ppos[0].act(curstep, states[0], self.memorys[0], self.env.atk_type)
                             actions.append(action)
                             action, _ = self.ppos[1].act(curstep, states[1], self.memorys[1], start_num)
                             actions.append(action)
+                            v = []
+                            if t != substep:
+                                for i in range(self.env.n_agents):
+                                    v.append(self.ppos[i].evaluate(t, np.array([states[i][1:]]), actions[i], start_nums[i], type_ob)[1].cpu().detach().numpy())
 
                             # print('actions')
                             # print(actions)
@@ -189,6 +195,14 @@ class NaiveController():
                             atk_prob = [self.ppos[0].evaluate(t, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], self.env.atk_type, type_ob)[3].cpu().detach().numpy() for tar in range(self.env.n_targets)]
                             with torch.no_grad():
                                 states, reward, done, _ = env.step(actions, atk_prob)
+                            
+
+
+                            if not done and t != substep:
+                                done = True
+                                # print('v:')
+                                # print(v)
+                                reward = v
                             
                             # Saving reward and is_terminal:
                             for i in range(self.env.n_agents):
@@ -211,10 +225,12 @@ class NaiveController():
                                 done_cnt += 1
                                 if done_cnt % self.update_timestep == 0 or i_episode == round_each_belief - 1:
                                     # for i in range(self.env.n_agents):
+                                    # print('done cnt:')
+                                    # print(done_cnt)
                                     v_loss, tot_loss = self.ppos[update_agent_num].update(substep, self.memorys[update_agent_num])
                                     # self.memorys[update_agent_num].clear_memory()
                                     for agent_i in range(self.env.n_agents):
-                                        self.memorys[i].clear_memory()
+                                        self.memorys[agent_i].clear_memory()
                                     print('episode {}: {} agent updated with v_loss {} and loss{}'.format(i_episode, update_agent_num, v_loss, tot_loss))
                                     update_agent_num = (update_agent_num + 1) % 2
                                     # done_cnt = 0
