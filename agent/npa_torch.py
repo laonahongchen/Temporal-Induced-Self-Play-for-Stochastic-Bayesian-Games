@@ -6,8 +6,8 @@ import numpy as np
 import gc
 import math
 
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 class Memory:
     def __init__(self):
@@ -120,7 +120,7 @@ class ActorCritic(nn.Module):
         return action_probs, state_value, action_logprobs, dist_entropy # action_logprobs, torch.squeeze(state_value), dist_entropy, action_prob
         
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0., valuecoeff=1., entcoeff_decay = 1.):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, valuecoeff=2, entcoeff_decay = 1.):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -137,8 +137,8 @@ class PPO:
         self.entcoeff = entcoeff
         self.entcoeff_decay = entcoeff_decay
         
-        # self.MseLoss = nn.MSELoss()
-        self.MseLoss = nn.SmoothL1Loss()
+        self.MseLoss = nn.MSELoss()
+        # self.MseLoss = nn.SmoothL1Loss()
         self.policy_old_weight = 0
     
     def update(self, memory, do_normalize=False):   
@@ -193,7 +193,7 @@ class PPO:
 
             for i_minibatch in range(math.ceil(rewards.shape[0] * 1. / self.minibatch)):
                 # print('i minibatch:')
-                # print(i_minibatch)
+                # print(i_minibatch, rewards.shape)
                 # minibatch_idx = i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch
                 cur_adv = advantages[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach()
 
@@ -204,7 +204,7 @@ class PPO:
                 surr1 = ratios * cur_adv
                 surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * cur_adv
 
-                cur_value_loss = self.MseLoss(state_values, rewards[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
+                cur_value_loss = self.MseLoss(state_values[:, 0], rewards[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
 
                 loss = -torch.min(surr1, surr2) + self.valuecoeff*cur_value_loss - self.entcoeff*dist_entropy
 
@@ -307,7 +307,7 @@ class NPAAgent:
 
         return np.array(ret)
     
-    def act(self, step, observation, memory, start_num = 1):
+    def act(self, step, observation, memory, start_num = -1):
         # print(observation)
 
         if type(observation) != torch.Tensor:
@@ -339,7 +339,7 @@ class NPAAgent:
 
             first_enum = False
             for i in range(self.n_belief):
-                action_prob = self.agents[step][i].policy_old.act(observation[1:], memory)
+                action_prob = self.agents[step][i].policy_old.act(observation[1 + self.n_target:], memory)
                 # print('step and action prob:')
                 # print(step)
                 # print(action_probs)
@@ -348,14 +348,14 @@ class NPAAgent:
                 if first_enum:
                     action_probs = torch.add(action_probs, action_prob * w[i])
                 else:
-                    action_probs = action_prob
+                    action_probs = action_prob * w[i]
                     first_enum = True
                 
                 # print(action_probs)
                     
         else:
             # print('single')
-            action_probs = self.agents[step][start_num].policy_old.act(observation[1:], memory)
+            action_probs = self.agents[step][start_num].policy_old.act(observation[1 + self.n_target:], memory)
             memory.start_num = start_num
 
         dist = Categorical(action_probs)
@@ -365,7 +365,7 @@ class NPAAgent:
         # print(action)
 
         if memory != None:
-            memory.states.append(observation[1:])
+            memory.states.append(observation[1 + self.n_target:])
             memory.actions.append(action)
             memory.logprobs.append(dist.log_prob(action))
         
@@ -373,9 +373,9 @@ class NPAAgent:
 
     def evaluate(self, step, state, action, start_num, type_ob):
         if start_num != -1:
-            action_probs, state_values, _, _ = self.agents[step][start_num].policy.evaluate(state, action, type_ob)
+            action_probs, state_values, _, _ = self.agents[step][start_num].policy.evaluate(state[:, self.n_target:], action, type_ob)
         else:
-            belief = state[0, 1: 1 + self.n_target]
+            belief = state[0, 0: self.n_target]
             # print('in eval:')
             # print(state)
             # print(belief)
@@ -384,7 +384,7 @@ class NPAAgent:
             state_values = None
             first_enum = False
             for i in range(self.n_belief):
-                action_prob, state_value, _, _ = self.agents[step][i].policy.evaluate(state, action, type_ob)
+                action_prob, state_value, _, _ = self.agents[step][i].policy.evaluate(state[:, self.n_target:], action, type_ob)
                 # print('step and action prob:')
                 # print(step)
                 # print(action_probs)
@@ -392,8 +392,8 @@ class NPAAgent:
                     action_probs = torch.add(action_probs, action_prob * w[i])
                     state_values = torch.add(state_values, state_value * w[i])
                 else:
-                    action_probs = action_prob
-                    state_values = state_value
+                    action_probs = action_prob * w[i]
+                    state_values = state_value * w[i]
                     first_enum = True
         action_prob = action_probs[:, action]
 
@@ -406,3 +406,23 @@ class NPAAgent:
 
         dist_entropy = dist.entropy()
         return  action_logprobs, torch.squeeze(state_values), dist_entropy, action_prob
+
+class AtkNPAAgent:
+    def __init__(self, n_type, *args, **kwargs):
+        self.agents = [NPAAgent(*args, **kwargs) for _ in range(n_type)]
+        # self.n_target = beliefs[0][0].shape[0]
+        self.n_type = n_type
+        self.memory_ph = Memory()
+    
+    def update(self, sub_step, memory, type_n):
+        return self.agents[type_n].update(sub_step, memory)
+
+    def act(self, step, observation, memory, start_num = -1, type_n=None):
+        if type_n != None:
+            return self.agents[type_n].act(step, observation, memory, start_num)
+        else:
+            type_n = np.argmax(observation[-self.n_type:])
+            return self.agents[type_n].act(step, observation, memory, start_num)
+
+    def evaluate(self, step, state, action, start_num, type_n, type_ob):
+        return self.agents[type_n].evaluate(step, state, action, start_num, type_ob)
