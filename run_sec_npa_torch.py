@@ -83,7 +83,7 @@ if __name__ == "__main__":
     clip_eps = 0.2
     n_belief = args.n_belief
 
-    priors = [[0.1 * i, 1 - 0.1 * i] for i in range(3, 8)]
+    priors = [[0.1 * i, 1 - 0.1 * i] for i in range(3, 4)]
 
     # other = "1000-test-steps-large-network"
 
@@ -122,7 +122,7 @@ if __name__ == "__main__":
             # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
             if train:
                 controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, args.seed)
-                controller.train(num_round=1, round_each_belief = 200000)
+                controller.train(num_round=1, round_each_belief = 3000)
 
                 
                 print('train finish')

@@ -27,6 +27,8 @@ def parse_args():
     parser.add_argument('--steps-per-round', type=int, default=5)
     parser.add_argument('--prior', type=float, nargs='+', default=[0.5, 0.5])
     parser.add_argument('--learning-rate', type=float, default=5e-4)
+    parser.add_argument('--batch-size', type=int, default=1000)
+    parser.add_argument('--minibatch', type=int, default=100)
     parser.add_argument('--test-every', type=int, default=100)
     parser.add_argument('--save-every', type=int)
     parser.add_argument('--load', action="store_true")
@@ -104,6 +106,6 @@ if __name__ == "__main__":
     env = TaggingEnv(n_steps=n_steps, prior=prior)
     # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
     if train:
-        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.seed)
+        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, args.seed)
         controller.train(round_each_belief=5000)
     

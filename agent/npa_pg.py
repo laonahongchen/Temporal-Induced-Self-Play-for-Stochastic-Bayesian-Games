@@ -36,8 +36,7 @@ class Memory:
                 ret.states.append(self.states[i])
                 ret.logprobs.append(self.logprobs[i])
                 ret.rewards.append(self.rewards[i])
-                # ret.is_terminals.append(self.is_terminals[i])
-                ret.is_terminals.append(True)
+                ret.is_terminals.append(self.is_terminals[i])
                 ret.type_obs.append(self.type_obs[i])
             fetch = self.is_terminals[i]
         # ret.actions = self.actions[0:1]
@@ -121,7 +120,7 @@ class ActorCritic(nn.Module):
         return action_probs, torch.squeeze(state_value), action_logprobs, dist_entropy # action_logprobs, torch.squeeze(state_value), dist_entropy, action_prob
         
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, valuecoeff=2, entcoeff_decay = 1.):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0., valuecoeff=2, entcoeff_decay = 1.):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -149,14 +148,11 @@ class PPO:
         for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            else:
-                assert False
             discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
 
         # if rewards
         # rewards = torch.tensor(rewards).to(device)
-        rewards = torch.stack(rewards).to(device)
 
         # Normalizing the rewards:
         if do_normalize:
@@ -164,7 +160,7 @@ class PPO:
             # print('std:')
             # print(rewards.std())
             # print(torch.isnan(rewards).any())
-            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-3)
         
         # convert list to tensor
         old_states = torch.stack(memory.states).to(device).detach()
@@ -191,7 +187,7 @@ class PPO:
             
                 
             # Finding Surrogate Loss:
-            advantages = rewards - state_values.detach()
+            advantages = rewards
 
             # if do_normalize:
                 # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
@@ -204,7 +200,7 @@ class PPO:
 
                 _, state_values, logprobs, dist_entropy = self.policy.evaluate(old_states[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch], old_actions[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch], old_types[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
                 # Finding the ratio (pi_theta / pi_theta__old):
-                ratios = torch.exp(logprobs - old_logprobs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach())
+                ratios = torch.exp(logprobs - old_logprobs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
 
                 surr1 = ratios * cur_adv
                 surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * cur_adv
@@ -231,7 +227,7 @@ class PPO:
         sdb = self.policy_old.state_dict()
         sda = self.policy.state_dict()
         for key in sda:
-            sdb[key] = (sdb[key] * self.policy_old_weight + sda[key]) / (self.policy_old_weight + 1.)
+            sdb[key] = (sdb[key] * self.policy_old_weight + sda[key]) / (self.policy_old_weight + 1)
         self.policy_old_weight += 1
         self.policy_old.load_state_dict(sdb)
         return tot_value_loss / cnt_opt, tot_loss / cnt_opt
@@ -287,7 +283,6 @@ class NPAAgent:
         for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            # print(type(reward))
             discounted_reward = reward + (self.agents[sub_step][memory.start_num].gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
         
@@ -387,8 +382,6 @@ class NPAAgent:
         if start_num != -1:
             action_probs, state_values, _, _ = self.agents[step][start_num].policy.evaluate(state[:, self.n_target:], action, type_ob)
         else:
-            # print('in eval:')
-            # print(state)
             belief = state[0, 0: self.n_target]
             # print('in eval:')
             # print(state)

@@ -30,7 +30,7 @@ class TaggingEnv(BaseEnv):
         # self.payoff = [[[-1., -1.], [-3., 0.]], [[0., -3.], [-2., -2.]]]
 
         self.v = [[1, 0], [-1, 0], [0, 1], [0, -1], [0, 0], [0, 0]]
-        self.target = [[7, 0], [7, 7]]
+        self.target = [[3, 0], [3, 3]]
         self.n_types = self.n_targets = 2
         self.n_rounds = self.n_steps = n_steps
         self.n_agents = 2
@@ -38,7 +38,7 @@ class TaggingEnv(BaseEnv):
         self.is_atk = is_atk
         self.random_prior = False
 
-        self.grids = np.zeros((8, 8))
+        self.grids = np.zeros((4, 4))
         self.zero_sum = True
 
         if seed is not None:
@@ -49,7 +49,7 @@ class TaggingEnv(BaseEnv):
         # For one cell, the possible result is nothing, fruits, either agents, both agents
         # The last observation for the attacker is its goal
         # observation_spaces = [spaces.Tuple(spaces.Box(low=0., high=8., shape=[4]), spaces.Box(low=0., high=1., shape=[4])), spaces.Tuple(spaces.Box(low=0., high=8., shape=[2]), spaces.Box(low=0., high=1., shape=[4]))]
-        observation_spaces = [spaces.Box(low=0., high=8., shape=[6]), spaces.Box(low=0., high=8., shape=[6])]
+        observation_spaces = [spaces.Box(low=0., high=4., shape=[6]), spaces.Box(low=0., high=4., shape=[6])]
 
         action_spaces = [spaces.Discrete(4), spaces.Discrete(5)]
 
@@ -102,8 +102,8 @@ class TaggingEnv(BaseEnv):
     def reset(self, debug=False, verbose=False):
         self.round_cnt = 0
         self.prob_cnt = 0
-        self.att_p = [0, np.random.randint(8)]
-        self.def_p = [np.random.randint(4), np.random.randint(8)]
+        self.att_p = [0, np.random.randint(4)]
+        self.def_p = [np.random.randint(2), np.random.randint(4)]
         if self.random_prior:
             self.prior = self.generate_prior()
         if self.is_atk:
@@ -127,8 +127,8 @@ class TaggingEnv(BaseEnv):
 
         self.round_cnt = round
         self.prob_cnt = 0
-        self.att_p = [0, np.random.randint(8)]
-        self.def_p = [np.random.randint(8), np.random.randint(8)]
+        self.att_p = [0, np.random.randint(4)]
+        self.def_p = [np.random.randint(4), np.random.randint(4)]
         self.atk_type = self.goal = self.type = np.random.choice(self.n_targets, p=belief)
 
         # print(self.att_p, self.def_p)
@@ -261,7 +261,7 @@ class TaggingEnv(BaseEnv):
         if actions[1] == 5:
             self.prob_cnt = self.prob_cnt + 1
             rew_def -= 0.25 * self.prob_cnt
-        elif actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2:
+        elif actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 2 ** 0.2:
             # obs_ret[1][-1] = 2
             obs_ret[1][-1] = obs_ret[1][-2] = 0
             if self.type > 0:
@@ -275,7 +275,7 @@ class TaggingEnv(BaseEnv):
         
         rew = (rew_atk, rew_def)
 
-        done = self.round_cnt >= self.n_rounds or np.all(self.att_p == self.target[self.goal]) or (actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2)
+        done = self.round_cnt >= self.n_rounds or np.all(self.att_p == self.target[self.goal]) or (actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 2 ** 0.2)
         # print(obs_ret.shape)
         self.last_obs_n = obs_ret
 

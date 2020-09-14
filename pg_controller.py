@@ -16,7 +16,7 @@ from torch.distributions import Normal
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 # from agent.ppo_torch import PPO, Memory
 # from agent.bi_torch import BackInductionAgent, Memory
-from agent.npa_torch import NPAAgent, Memory, AtkNPAAgent
+from agent.pg_npa import NPAAgent, AtkNPAAgent
 # from base_controller import BaseController
 from env.base_env import BaseEnv
 
@@ -60,10 +60,10 @@ class NaiveController():
             np.random.seed(self.random_seed)
             # env.seed(random_seed)
         
-        self.atk_memorys = [Memory() for _ in range(self.env.n_types)]
-        self.def_memory = Memory()
+        # self.atk_memorys = [Memory() for _ in range(self.env.n_types)]
+        # self.def_memory = Memory()
         # self.def_memory
-        self.ppos = []
+        self.agents = []
         # print(self.env.observation_spaces[0])
         # print(self.env.observation_spaces[0].shape)
         # print(self.env.action_spaces[0])
@@ -80,8 +80,8 @@ class NaiveController():
             new_belief[i] = 1
             atk_belief_n.append(np.copy(new_belief))
         self.atk_belief = [atk_belief_n for i in range(self.env.n_steps)]
-        print('atk belief:')
-        print(self.atk_belief)
+        # print('atk belief:')
+        # print(self.atk_belief)
         self.beliefs_n = [self.atk_belief, self.beliefs]
         self.n_belief_n = [self.env.n_targets, self.n_belief]
         self.env_prior = np.copy(self.env.prior)
@@ -95,16 +95,17 @@ class NaiveController():
             state_dim = self.env.observation_spaces[i].shape[0]
             action_dim = self.env.action_spaces[i].n
             if i != 0:
-                ppo = NPAAgent(self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets)
+                ppo = NPAAgent(self.env.n_steps, self.n_belief, self.beliefs, lr, betas[i], state_dim, action_dim, self.n_latent_var, self.env.n_targets)
             else:
-                ppo = AtkNPAAgent(self.env.n_types, self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets)
+                ppo = AtkNPAAgent(self.env.n_types, self.env.n_steps, self.n_belief, self.beliefs, lr, betas[i], state_dim, action_dim, self.n_latent_var, self.env.n_targets)
                 # curmemory.append(memory)
                 # curppo.append(ppo)
             # self.memorys.append(memory)
             
-            self.ppos.append(ppo)
+            self.agents.append(ppo)
         # print(lr,betas)
-        
+        print('print every:')
+        print(self.log_interval)
     
     def generate_prior(self):
         x = [0.] + sorted(np.random.rand(self.env.n_targets - 1).tolist()) + [1.]
@@ -191,22 +192,22 @@ class NaiveController():
                                 start_num = b
 
                             # for i in range(self.env.n_agents):
-                            action, _ = self.ppos[0].act(curstep, states[0], self.atk_memorys[self.env.atk_type], start_num, self.env.atk_type, in_training=True)
+                            action, _ = self.agents[0].act(curstep, states[0], start_num, self.env.atk_type, in_training=True)
                             actions.append(action)
-                            action, _ = self.ppos[1].act(curstep, states[1], self.def_memory, start_num, in_training=True)
+                            action, _ = self.agents[1].act(curstep, states[1], start_num, in_training=True)
                             actions.append(action)
                             v = []
                             if t != substep:
                                 # for i in range(self.env.n_agents):
                                 # print('state:')
                                 # print(states[0][1:], np.array([states[0][1:]]))
-                                v.append(self.ppos[0].evaluate(t, torch.stack([states[0][1:]]), actions[0], self.env.atk_type, type_ob, start_num, in_training=True)[1])
-                                v.append(self.ppos[1].evaluate(t, torch.stack([states[1][1:]]), actions[1], type_ob, start_num, in_training=True)[1])
+                                v.append(self.agents[0].evaluate(t, torch.stack([states[0][1:]]), actions[0], self.env.atk_type, start_num, in_training=True)[1])
+                                v.append(self.agents[1].evaluate(t, torch.stack([states[1][1:]]), actions[1], start_num, in_training=True)[1])
 
                             # print('actions')
                             # print(actions)
                             
-                            atk_prob = torch.stack([self.ppos[0].evaluate(t, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), start_num, in_training=True)[3] for tar in range(self.env.n_targets)])
+                            atk_prob = torch.stack([self.agents[0].evaluate(t, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, start_num, in_training=True)[1] for tar in range(self.env.n_targets)])
                             # with torch.no_grad():
                             states, reward, done, _ = env.step(actions, atk_prob)
 
@@ -214,25 +215,28 @@ class NaiveController():
                                 done = True
                                 # print('v:')
                                 # print(v)
-                                reward = torch.Tensor(v)
+                                reward = v
                             else:
                                 reward = torch.Tensor(reward)
                             
+                            self.agents[0].agents[self.env.atk_type].rewards.append(reward[0])
+                            self.agents[1].rewards.append(reward[1])
+                            
                             # Saving reward and is_terminal:
                             # typeob is a tensor with shape[1, :, :], sue type_ob to extract the only episode in the type_ob
-                            self.def_memory.rewards.append(reward[1])
-                            self.def_memory.is_terminals.append(done)
-                            self.def_memory.type_obs.append(type_ob[0])
+                            # self.def_memory.rewards.append(reward[1])
+                            # self.def_memory.is_terminals.append(done)
+                            # self.def_memory.type_obs.append(type_ob[0])
 
-                            self.atk_memorys[self.env.atk_type].rewards.append(reward[0])
-                            self.atk_memorys[self.env.atk_type].is_terminals.append(done)
-                            self.atk_memorys[self.env.atk_type].type_obs.append(type_ob[0])
+                            # self.atk_memorys[self.env.atk_type].rewards.append(reward[0])
+                            # self.atk_memorys[self.env.atk_type].is_terminals.append(done)
+                            # self.atk_memorys[self.env.atk_type].type_obs.append(type_ob[0])
                             
                             
                             # update if its time
                             # if timestep % update_timestep == 0:
                             #     for i in range(self.env.n_agents):
-                            #         ppos[i][substep].update(memory[i][substep])
+                            #         agents[i][substep].update(memory[i][substep])
                             #         memorys[i][substep].clear_memory()
                             #     timestep = 0
                             
@@ -241,94 +245,60 @@ class NaiveController():
                                 curreward += reward
 
                             if done:
-                                done_cnt += 1
-                                if done_cnt % self.update_timestep == 0 or i_episode == round_each_belief - 1:
+                                # done_cnt += 1
+                                # if done_cnt % self.update_timestep == 0 or i_episode == round_each_belief - 1:
                                     # for i in range(self.env.n_agents):
                                     # print('done cnt:')
                                     # print(done_cnt)
-                                    
-                                    if update_agent_num == 1:
-                                        v_loss, tot_loss = self.ppos[1].update(substep, self.def_memory)
-                                    else:
-                                        cntupd = 0
-                                        v_loss, tot_loss = 0, 0
-                                        for type_i in range(len(self.atk_memorys)):
-                                            if len(self.atk_memorys[type_i].rewards) > 1:
-                                                v_loss_t, tot_loss_t = self.ppos[0].update(substep, self.atk_memorys[type_i], type_i)
-                                                cntupd += 1
-                                                v_loss += v_loss_t
-                                                tot_loss += tot_loss_t
-                                            v_loss /= cntupd
-                                            tot_loss /= cntupd
+                                self.agents[0].update(substep, self.env.atk_type, self.gamma)
+                                self.agents[1].update(substep, self.gamma)
+
+                                    # if update_agent_num == 1:
+                                    #     v_loss, tot_loss = self.agents[1].update(substep, self.gamma)
+                                    # else:
+                                    #     cntupd = 0
+                                    #     v_loss, tot_loss = 0, 0
+                                    #     for type_i in range(len(self.atk_memorys)):
+                                    #         if len(self.atk_memorys[type_i].rewards) > 1:
+                                    #             v_loss_t, tot_loss_t = self.agents[0].update(substep, self.gamma)
+                                    #             cntupd += 1
+                                    #             v_loss += v_loss_t
+                                    #             tot_loss += tot_loss_t
+                                    #         v_loss /= cntupd
+                                    #         tot_loss /= cntupd
                                     # v_loss += v_loss_t
                                     # tot_loss += tot_loss_t
                                     
 
-                                    self.def_memory.clear_memory()
+                                    # self.def_memory.clear_memory()
                                     
                                     # self.memorys[update_agent_num].clear_memory()
                                     # for agent_i in range(self.env.n_agents):
                                         # self.memorys[agent_i].clear_memory()
                                     
-                                    for type_i in range(len(self.atk_memorys)):
-                                        self.atk_memorys[type_i].clear_memory()
-                                    print('episode {}: updated with v_loss {} and loss{}'.format(i_episode, v_loss, tot_loss))
-                                    update_agent_num = (update_agent_num + 1) % 2
+                                    # for type_i in range(len(self.atk_memorys)):
+                                    #     self.atk_memorys[type_i].clear_memory()
+                                    # print('episode {}: updated with v_loss {} and loss{}'.format(i_episode, v_loss, tot_loss))
+                                    # update_agent_num = (update_agent_num + 1) % 2
                                     # done_cnt = 0
                                 # timestep = 0
                                 break
 
-                        if substep == 0:  
-                            avg_length[env.type] += t - substep + 1
-                            epi_cnt += 1
-                            epi_type_cnt[env.type] += 1
-                            # print('type: {}, step: {}, rew: {}'.format(env.type, t, curreward))
-                            # print(env.type)
-                            # print('step: ')
-                            # print(t)
-                            # print('rew:')
-                            # print(curreward)
-                            running_reward[env.type] += curreward
+                        if i_episode % self.log_interval == 0:
+                            print('{} episode trained fininshed.'.format(i_episode))
+
+                        # Because we do not sample a full trajectory during training now, we cannot provide any information during training anymore
+
+                        # if substep == 0:  
+                        #     avg_length[env.type] += t - substep + 1
+                        #     epi_cnt += 1
+                        #     epi_type_cnt[env.type] += 1
+                        #     running_reward[env.type] += curreward
                         
                         
-                        # logging
-                        if substep == 0 and epi_cnt % self.log_interval == 0:
-                            # print(avg_length, epi_cnt)
-                            # avg_length = int(avg_length/epi_cnt)
-                            # running_reward /= self.log_interval
-                            # running_reward = int((running_reward/self.log_interval))
-
-                            # print(epi_type_cnt)
-                            # print('Episode {} \t episode length: {} \t reward:'.format(self.step, avg_length))
-                            # print(running_reward)
-                            running_reward = torch.zeros((self.env.n_targets, self.env.n_agents))
-                            avg_length = np.zeros((self.env.n_targets))
-                            epi_cnt = 0
-                            epi_type_cnt = np.zeros((self.env.n_targets))
-    
-    def assess_strategy(self, episodes_test=100):
-        atk_rews = [0 for _ in range(self.env.n_types)]
-        def_rews = [0 for _ in range(self.env.n_types)]
-        type_cnt = [0 for _ in range(self.env.n_types)]
-        for i in range(episodes_test):
-            cur_round = 0
-            states, _, _ = self.env.reset()
-            cur_type = self.env.atk_type
-            type_cnt[cur_type] += 1
-            done = False
-            atk_rew = 0
-            def_rew = 0
-            while not done:
-                atk_action, _ = self.agents[0].act(cur_round, states[0], cur_type)
-                def_action, _ = self.agents[1].act(cur_round, states[1])
-                atk_prob = [self.agents[0].evaluate(substep, self._get_atk_ob(tar, self.env.belief, state[0]), atk_action, self.env.atk_type)[0][0].cpu().detach().numpy() for tar in range(self.env.n_targets)]
-                actions = [atk_action, def_action]
-                states, rew, done, _ = self.step(actions, atk_prob)
-                atk_rew += rew[0]
-                def_rew += rew[1]
-            atk_rews += atk_rew
-            def_rews += def_rew
-
-        for type_i in range(self.env.n_types):
-            if type_cnt[type_i] != 0:
-                print('type {}: sampled {} times, atk_avg_rew: {}, def_avg_rew: {}'.format(type_i, type_cnt[type_i], atk_rews[type_i] / type_cnt[type_i], def_rews[type_i] / type_cnt[type_i]))
+                        # # logging
+                        # if substep == 0 and epi_cnt % self.log_interval == 0:
+                        #     running_reward = torch.zeros((self.env.n_targets, self.env.n_agents))
+                        #     avg_length = np.zeros((self.env.n_targets))
+                        #     epi_cnt = 0
+                        #     epi_type_cnt = np.zeros((self.env.n_targets))

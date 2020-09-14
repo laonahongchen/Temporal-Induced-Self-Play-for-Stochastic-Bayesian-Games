@@ -7,7 +7,6 @@ from copy import deepcopy
 from numpy import linalg as LA
 import csv
 import joblib
-import torch
 # import seaborn as sns
 # import pandas as pd
 import matplotlib.pyplot as plt
@@ -232,17 +231,10 @@ class SecurityEnv(BaseEnv):
         return self.ac_history[round - 1].reshape(-1)
 
     def _get_dfd_ob(self, base_ob):
-        if type(self.belief) != torch.Tensor:
-            return np.concatenate(([self.rounds_so_far], self.belief, [0.], base_ob))
-        else:
-            return torch.cat([torch.Tensor([self.rounds_so_far]), self.belief, torch.Tensor([0.]), torch.Tensor(base_ob)])
+        return np.concatenate(([self.rounds_so_far], self.belief, [0.], base_ob))
 
     def _get_atk_ob(self, base_ob):
-        if type(self.belief) != torch.Tensor:
-            return np.concatenate(([self.rounds_so_far], self.belief, base_ob, self.type_ob))
-        else:
-            return torch.cat([torch.Tensor([self.rounds_so_far]), self.belief, torch.Tensor(base_ob), torch.Tensor(self.type_ob)])
-
+        return np.concatenate(([self.rounds_so_far], self.belief, base_ob, self.type_ob))
 
     def base_ob_to_h(self, base_ob):
         s = 0
@@ -357,31 +349,31 @@ class SecurityEnv(BaseEnv):
 
     # use together with reset_to_state() function
     def get_cur_state(self):
-        return self.ac_history, self.belief
+        return np.copy(self.ac_history), np.copy(self.belief)
     
     def reset_to_state(self, ac_history, belief):
-        self.ac_history = ac_history
+        self.ac_history = np.copy(ac_history)
         self.type = self.atk_type =  np.random.choice(self.n_types, p=belief)
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
         self.probs = np.ones(shape=self.num_agents, dtype=np.float32)
         self.probs[0] *= belief[self.atk_type]
-        self.belief = belief
+        self.belief = np.copy(belief)
         return self._get_ob(), self.probs, self.ac_history
     
     def reset_to_state_with_type(self, ac_history, belief, type_s):
-        self.ac_history = ac_history
+        self.ac_history = np.copy(ac_history)
         self.type = self.atk_type =  type_s
         self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
         self.type_ob[self.atk_type] = 1.
         self.probs = np.ones(shape=self.num_agents, dtype=np.float32)
         self.probs[0] *= belief[self.atk_type]
-        self.belief = belief
+        self.belief = np.copy(belief)
         return self._get_ob(), self.probs, self.ac_history
 
     def step(self, actions, action_probs, update_belief=True):
         if update_belief:
-            self.belief = self.update_belief(self.belief, action_probs)
+            self.belief = self.update_belief(self.belief, np.array(action_probs))
         atk_rew = self.payoff[self.atk_type, actions[0], actions[1], 0]
         dfd_rew = self.payoff[self.atk_type, actions[0], actions[1], 1]
 
@@ -549,20 +541,11 @@ class SecurityEnv(BaseEnv):
             recursive(tt, [])
     
     def update_belief(self, belief, probs):
-        if type(probs) == torch.Tensor:
-            if type(belief) != torch.Tensor:
-                belief = torch.Tensor(belief)
-            probs = probs.reshape(-1)
-            tmp = belief * probs
-            if torch.sum(tmp) < 1e-2:
-                return torch.ones(self.n_targets) / self.n_targets
-            return tmp / torch.sum(tmp)
-        else:
-            probs = probs.reshape(-1)
-            tmp = belief * probs
-            if np.sum(tmp) < 1e-2:
-                return np.ones(self.n_targets) / self.n_targets
-            return tmp / np.sum(tmp)
+        probs = probs.reshape(-1)
+        tmp = belief * probs
+        if np.sum(tmp) < 1e-2:
+            return np.ones(self.n_targets) / self.n_targets
+        return tmp / np.sum(tmp)
 
     def initialize_defender_average_policy(self):
         dp = self.defender_average_policy = dict()
@@ -704,11 +687,11 @@ class SecurityEnv(BaseEnv):
                 for t in range(self.n_types):
                     atk_ob = self._convert_to_atk_ob(history, t)
                     cur_round_ = len(history)
-                    cur_memory_ = self.strategy.memory_ph
+                    # cur_memory_ = self.strategy.memory_ph
                     # print('in atk br calculate, atk_ob:')
                     # print(atk_ob)
-                    _, atk_strategy = self.strategy.act(cur_round_, atk_ob, cur_memory_)
-                    self.strategy.memory_ph.clear_memory()
+                    _, atk_strategy = self.strategy.act(cur_round_, atk_ob)
+                    # self.strategy.memory_ph.clear_memory()
                     atk_strategy = atk_strategy.reshape(-1)
                     # print(atk_strategy)
                     for i in range(self.n_slots):
@@ -773,19 +756,19 @@ class SecurityEnv(BaseEnv):
                 return self.cache[encoded]
             else:
                 def_ob = self._convert_to_def_ob(history)
-                _, def_strategy = self.strategy.act(len(history), def_ob, self.strategy.memory_ph)
-                self.strategy.memory_ph.clear_memory()
+                _, def_strategy = self.strategy.act(len(history), def_ob)
+                # self.strategy.memory_ph.clear_memory()
                 def_strategy = def_strategy.reshape(-1)
 
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
                 for t in range(self.n_types):
                     atk_ob = self._convert_to_atk_ob(history, t)
                     cur_round_ = len(history)
-                    cur_memory_ = self.atk_strategy.memory_ph
+                    # cur_memory_ = self.atk_strategy.memory_ph
                     # print('in atk br calculate, atk_ob:')
                     # print(atk_ob)
-                    _, atk_strategy = self.atk_strategy.act(cur_round_, atk_ob, cur_memory_)
-                    self.atk_strategy.memory_ph.clear_memory()
+                    _, atk_strategy = self.atk_strategy.act(cur_round_, atk_ob)
+                    # self.atk_strategy.memory_ph.clear_memory()
                     atk_strategy = atk_strategy.reshape(-1)
                     # print(atk_strategy)
                     for i in range(self.n_slots):
@@ -862,17 +845,19 @@ class SecurityEnv(BaseEnv):
 
                 for t in range(self.n_types):
                     atk_ob = self._convert_to_atk_ob(history, t)
-                    _, atk_strategy = self.attacker_strategy.act(len(history), atk_ob, self.attacker_strategy.memory_ph)
-                    self.attacker_strategy.memory_ph.clear_memory()
+                    _, atk_strategy = self.attacker_strategy.act(len(history), atk_ob)
+                    # self.attacker_strategy.memory_ph.clear_memory()
                     atk_strategy = atk_strategy.reshape(-1)
                     for i in range(self.n_slots):
                         atk_strategy_type[i][t] += atk_strategy[i] * prior[t]
 
                 utility = 0.0
                 def_ob = self._convert_to_def_ob(history)
-                _,  def_strategy = self.defender_strategy.act(len(history), def_ob, self.defender_strategy.memory_ph)
-                self.defender_strategy.memory_ph.clear_memory()
+                _,  def_strategy = self.defender_strategy.act(len(history), def_ob)
+                # self.defender_strategy.memory_ph.clear_memory()
                 def_strategy = def_strategy.reshape(-1)
+                # print('def_s:')
+                # print(def_strategy)
                 for def_ac in range(self.n_slots):
                     p_def = def_strategy[def_ac]
                     for atk_ac in range(self.n_slots):
@@ -891,6 +876,7 @@ class SecurityEnv(BaseEnv):
                         self.env.belief = cur_belief
                         r = self._get_def_payoff(atk_ac, def_ac, p_type) + tmp
                         utility += r * p_def * p_atk
+                        # print(def_ac, atk_ac, p_def, p_atk, r, utility)
                 self.cache[encoded] = utility
                 return utility
 
@@ -898,7 +884,9 @@ class SecurityEnv(BaseEnv):
             self._reset()
             self.attacker_strategy = attacker_strategy
             self.defender_strategy = defender_strategy
-            self._recursive([], self.prior)
+            root_value = self._recursive([], self.prior)
+            # print('def value:')
+            # print(root_value)
             return self.cache
 
     class _AttackerUtilityCalculator(object):
@@ -935,20 +923,20 @@ class SecurityEnv(BaseEnv):
             else:
                 utility = 0.0
                 atk_ob = self._convert_to_atk_ob(history, t)
-                _,  atk_strategy = self.attacker_strategy.act(len(history), atk_ob, self.attacker_strategy.memory_ph)
-                self.attacker_strategy.memory_ph.clear_memory()
+                _,  atk_strategy = self.attacker_strategy.act(len(history), atk_ob)
+                # self.attacker_strategy.memory_ph.clear_memory()
                 atk_strategy = atk_strategy.reshape(-1)
                 def_ob = self._convert_to_def_ob(history)
-                _,  def_strategy = self.defender_strategy.act(len(history), def_ob, self.defender_strategy.memory_ph)
-                self.defender_strategy.memory_ph.clear_memory()
+                _,  def_strategy = self.defender_strategy.act(len(history), def_ob)
+                # self.defender_strategy.memory_ph.clear_memory()
                 def_strategy = def_strategy.reshape(-1)
 
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
 
                 for t in range(self.n_types):
                     atk_ob = self._convert_to_atk_ob(history, t)
-                    _,  atk_strategy = self.attacker_strategy.act(len(history), atk_ob, self.attacker_strategy.memory_ph)
-                    self.attacker_strategy.memory_ph.clear_memory()
+                    _,  atk_strategy = self.attacker_strategy.act(len(history), atk_ob)
+                    # self.attacker_strategy.memory_ph.clear_memory()
                     atk_strategy = atk_strategy.reshape(-1)
                     for i in range(self.n_slots):
                         atk_strategy_type[i][t] += atk_strategy[i] * self.env.belief[t]

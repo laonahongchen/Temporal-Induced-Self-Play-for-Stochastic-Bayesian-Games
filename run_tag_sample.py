@@ -1,6 +1,6 @@
 # from env.matrix_env import MatrixEnv
-# from env.tagging import TaggingEnv
-from env.sec_ac import SecurityEnv
+from env.tagging import TaggingEnv
+# from env.sec_ac import SecurityEnv
 from sample_ac_controller import NaiveController
 # import seaborn as sns
 # import pandas as pd
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     for i in range(1):
 
-        env = SecurityEnv(n_slots=5,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=True,seed=args.seed + i)
+        env = TaggingEnv(n_steps=n_steps, prior=prior, seed=args.seed + i)
 
         for prior in priors:
             print('start with prior:')
@@ -128,13 +128,14 @@ if __name__ == "__main__":
                 controller.train(num_round=1, round_each_belief = max_steps)
 
                 
-                # print('train finish')
+                print('train finish')
+                controller.assess_strategy(1000)
 
-                strategies = controller.agents[0], controller.agents[1]
-                tot_res.append(env.assess_strategies(strategies))
+                # strategies = controller.agents[0], controller.agents[1]
+                # tot_res.append(env.assess_strategies(strategies))
                 print(tot_res)
     
-    # print(tot_res)
+    print(tot_res)
 
 # 6657 5410 5748 9418 9527
 

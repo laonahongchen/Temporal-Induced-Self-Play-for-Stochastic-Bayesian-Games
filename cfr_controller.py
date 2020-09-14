@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Normal
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
-from agent.sample_ac import NPAAgent, AtkNPAAgent
+from agent.cfr import NPAAgent, AtkNPAAgent
 from env.base_env import BaseEnv
 from datetime import datetime
 
@@ -140,68 +140,80 @@ class NaiveController():
                         state_info, belief = self.env.get_cur_state()
                         def_obs.append(train_state[1][1 + self.env.n_targets:])
 
-                        print('{}:start training in round {}, belief {}, state {}'.format(datetime.now(), substep, b, i_state))
+                        print('{}: start training in round {}, belief {}, state {}'.format(datetime.now(), substep, b, i_state))
+                        atk_r = [-1000 for _ in range(self.env.n_types)]
+                        def_r = -1000
+                    
+                        atk_s = []
+                        def_s = self.agents[1].act(substep, train_state[1], b, True)[1].detach()
 
-                        # update the agents
+                        # print('def s:')
+                        # print(def_s)
+
+                        for type_i in range(self.env.n_types):
+                            train_state, _, _ = self.env.reset_to_state_with_type(state_info, belief, type_i)
+                            atk_s.append(self.agents[0].act(substep, train_state[0], type_i, b, True)[1].detach())
+
                         for i_episode in range(round_each_belief):
-                            # if update_agent_num == 1 or i_episode == 0:
                             def_vs = [0 for _ in range(self.action_dims[1])]
                             atk_vs = [[0 for __ in range(self.action_dims[0])] for _ in range(self.env.n_types)]
 
-                            atk_s = []
-                            def_s = self.agents[1].act(substep, train_state[1], b, True)[1].detach()
-
-                            for type_i in range(self.env.n_types):
-                                train_state, _, _ = self.env.reset_to_state_with_type(state_info, belief, type_i)
-                                atk_s.append(self.agents[0].act(substep, train_state[0], type_i, b, True)[1].detach())
-
-
                             for atk_action in range(self.action_dims[0]):
-                                # need to get atk_prob
-                                # TODO update return and API
                                 atk_prob = [self.agents[0].evaluate(substep, self._get_atk_ob(tar, self.env.belief, train_state[0]), atk_action, tar, b, True)[0][0].cpu().detach().numpy() for tar in range(self.env.n_targets)]
-                                # print('atk prob:')
-                                # print(atk_prob)
-                                # def_tmpvs = []
                                 atk_tmpvs = [0 for _ in range(self.env.n_types)]
                                 for def_action in range(self.action_dims[1]):
-                                    # sumv = None
                                     def_sumv = 0
                                     atk_sumv = [0 for _ in range(self.env.n_types)]
                                     type_cnts = [0 for _ in range(self.env.n_types)]
                                     actions = [atk_action, def_action]
                                     
                                     for type_i in range(self.env.n_types):
+                                        # print('cur type: {}'.format(type_i))
                                         for epoch_i in range(self.K_epochs):
                                             self.env.reset_to_state_with_type(state_info, belief, type_i)
                                             next_states, reward, done, _ = self.env.step(actions, atk_prob)
                                             tmpv = reward
                                             if not done:
-                                                tmpv[0] += self.gamma * self.agents[0].evaluate(substep + 1, next_states[0][1:], 0, b, type_i, True)[1].detach()
-                                                tmpv[1] += self.gamma * self.agents[1].evaluate(substep + 1, next_states[1][1:], 0, b, True)[1].detach()
-                                            # type_cnts[self.env.atk_type] += 1
+                                                tmpv[0] += self.gamma * self.agents[0].evaluate(substep + 1, next_states[0][1:], 0, type_i, b,  False)[1].detach()
+                                                tmpv[1] += self.gamma * self.agents[1].evaluate(substep + 1, next_states[1][1:], 0, b, False)[1].detach()
                                             atk_sumv[self.env.atk_type] += tmpv[0] * def_s[def_action] / self.K_epochs
                                             def_sumv += tmpv[1] * self.beliefs[substep][b][type_i] * atk_s[type_i][atk_action]/ self.K_epochs 
-                                        # def_sumv += tmpv[0]
-                                    # def_tmpvs.append(def_sumv)
                                     def_vs[def_action] += def_sumv
 
-                                    # atk_tmpvs.append(sumv[0] / self.K_epochs)
                                     for type_i in range(self.env.n_types):
                                         atk_tmpvs[type_i] += atk_sumv[type_i]
-                                    # self.agents[update_agent_num]
-                                # vs.append(tmpvs)
-                                # def_vs.append(def_tmpvs)
-                                # atk_vs.append(atk_tmpvs)
                                 for type_i in range(self.env.n_types):
                                     atk_vs[type_i][atk_action] = atk_tmpvs[type_i]# .append(atk_tmpvs[type_i])
                             # vs = np.array(vs)
                             def_vs = np.array(def_vs)
+                            # def_vs -= def_r
                             atk_vs = np.array(atk_vs)
+                            def_vs_t = def_vs - def_r
+                            atk_vs_t = np.copy(atk_vs)
+                            for type_i in range(self.env.n_types):
+                                atk_vs_t[type_i] -= atk_r[type_i]
                             # atk_s = np.zeros(self.env.n_types)
 
-                            self.agents[1].update(substep, train_state[1], b, def_vs)
-                            self.agents[0].update(substep, train_state[0], b, atk_vs)
+                            self.agents[1].update(substep, train_state[1], b, def_vs_t)
+                            self.agents[0].update(substep, train_state[0], b, atk_vs_t)
+
+                            atk_s = []
+                            def_s = self.agents[1].act(substep, train_state[1], b, True)[1].detach()
+                            # cur_res = def_s * def_vs
+                            def_r = torch.sum(def_s * torch.Tensor(def_vs)).item()
+                            # print('def_r:')
+                            # print(def_r)
+
+                            for type_i in range(self.env.n_types):
+                                train_state, _, _ = self.env.reset_to_state_with_type(state_info, belief, type_i)
+                                atk_s.append(self.agents[0].act(substep, train_state[0], type_i, b, True)[1].detach())
+                                # cur_res = atk_vs * atk_s[type_i]
+                                atk_r[type_i] = torch.sum(torch.Tensor(atk_vs) * atk_s[type_i]).item()
+                                # print(cur_res)
+
+                            # print('cur r:')
+                            # print(def_r, atk_r)
+                            
                         
                         print(datetime.now(), ': pol updated')
 
@@ -219,7 +231,7 @@ class NaiveController():
                             for atk_action in range(self.action_dims[0]):
                                 # need to get atk_prob
                                 # TODO update return and API
-                                atk_prob = [self.agents[0].evaluate(substep, self._get_atk_ob(tar, self.env.belief, train_state[0]), atk_action, tar, b)[0].cpu().detach().numpy() for tar in range(self.env.n_targets)]
+                                atk_prob = [self.agents[0].evaluate(substep, self._get_atk_ob(tar, self.env.belief, train_state[0]), atk_action, tar, b, in_training=True)[0].cpu().detach().numpy() for tar in range(self.env.n_targets)]
                                 tmpvs = []
                                 for def_action in range(self.action_dims[1]):
                                     sumv = None
