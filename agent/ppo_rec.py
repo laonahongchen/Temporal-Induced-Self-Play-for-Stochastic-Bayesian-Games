@@ -4,7 +4,8 @@ from torch.distributions import Categorical
 import gym
 import numpy as np
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 class Memory:
     def __init__(self):
@@ -31,7 +32,7 @@ class ActorCritic(nn.Module):
 
         # print(type(state_dim), n_latent_var)
 
-        self.gru = nn.GRU(int(state_dim), int(n_latent_var))
+        self.lstm = nn.GRU(int(state_dim), int(n_latent_var))
 
         # actor
         self.action_layer = nn.Sequential(
@@ -47,7 +48,7 @@ class ActorCritic(nn.Module):
         self.value_layer = nn.Sequential(
                 # nn.Linear(n_latent_var, n_latent_var),
                 # nn.Tanh(),
-                nn.Linear(n_latent_var + type_dim, n_latent_var),
+                nn.Linear(n_latent_var, n_latent_var),
                 nn.Tanh(),
                 nn.Linear(n_latent_var, 1)
                 )
@@ -56,16 +57,36 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
         
     def act(self, state, rnn_history, memory):
-        state = torch.from_numpy(state[1:]).float().to(device) 
+        if type(state) != torch.Tensor:
+            state = torch.from_numpy(state[1:]).float().to(device) 
+        else:
+            state = state[1:]
         # print('run gru:')
-        # print(rnn_history, state)
-        rec_state, new_rnn = self.gru(state.unsqueeze(0).unsqueeze(0), rnn_history)
+        # print(rnn_history.shape, state.shape)
+        rec_state, new_rnn = self.lstm(state.unsqueeze(0).unsqueeze(0), rnn_history)
         # print('rec state:')
-        # print(rec_state)
+        # print(rec_state.shape, new_rnn.shape)
         action_probs = self.action_layer(rec_state.squeeze(0))
+
+        # print(state[-3] < 0.5)
+        # print(action_probs.shape)
+        
+        # print('before mask:')
         # print(action_probs)
+
+        if action_probs.shape[1] > 4 and state[-3] < 0.5:
+            action_probs[:, -1] = 0
+        
+        # print(action_probs)
+
+        action_probs = action_probs / torch.sum(action_probs)
+        
         dist = Categorical(action_probs)
         action = dist.sample()
+
+        # print('action:', action)
+
+        # print(action_probs, action)
         
         if memory != None:
             memory.states.append(state)
@@ -76,21 +97,33 @@ class ActorCritic(nn.Module):
         return action.item(), new_rnn, action_probs
     
     def evaluate(self, state, rnn_history, action, type_ob):
-        # print('in eval:')
-        # print(rnn_history.shape)
-        rec_state, _ = self.gru(state.unsqueeze(0), rnn_history.unsqueeze(0))
+        if type(state) != torch.Tensor:
+            state = torch.Tensor(state)
+        if type(rnn_history) != torch.Tensor:
+            rnn_history = torch.Tensor(rnn_history)
+
+        # print('in eval pre gru:')
+        # print(state.unsqueeze(0).shape)
+        rec_state, _ = self.lstm(state.unsqueeze(0), rnn_history)
         # print(rec_state)
-        action_probs = self.action_layer(rec_state.squeeze(0))
+        action_probs = self.action_layer(rec_state.squeeze(0).squeeze(0))
         dist = Categorical(action_probs)
+
+        # print('action probs:')
+        # print(action_probs)
+        # print(action)
+        
+        if type(action) != torch.Tensor:
+            action = torch.tensor([action]).float().to(device)
         
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
 
-        # print('in eval:')
+        # print('in final eval:')
         # print(rec_state.shape)
         # print(type_ob.shape)
 
-        rec_type_state = torch.cat([rec_state, type_ob.unsqueeze(0)], dim=2)
+        rec_type_state = torch.cat([rec_state.squeeze(0)], dim=-1)
         
         state_value = self.value_layer(rec_type_state)
         
@@ -105,8 +138,8 @@ class PPO:
         self.K_epochs = K_epochs
         
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var, type_dim).to(device)
-        # self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
-        self.optimizer = torch.optim.RMSprop(self.policy.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
+        # self.optimizer = torch.optim.RMSprop(self.policy.parameters(), lr=lr)
         self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, type_dim).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
@@ -119,7 +152,13 @@ class PPO:
         self.rnn_history = torch.from_numpy(np.zeros((1, 1, n_latent_var))).float().to(device)
         self.memory_ph = Memory()
     
-    def update(self, memory):   
+    def get_state_dict(self):
+        return self.policy_old.state_dict()
+    
+    def set_state_dict(self, sdb):
+        self.policy_old.load_state_dict(sdb)
+    
+    def update(self, memory, in_training=False):   
         # Monte Carlo estimate of state rewards:
         rewards = []
         discounted_reward = 0
@@ -130,8 +169,8 @@ class PPO:
             rewards.insert(0, discounted_reward)
         
         # Normalizing the rewards:
-        rewards = torch.tensor(rewards).to(device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        rewards = torch.tensor(rewards).to(device).detach()
+        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
         
         # convert list to tensor
         old_states = torch.stack(memory.states).to(device).detach()
@@ -148,7 +187,10 @@ class PPO:
         # Optimize policy for K epochs:
         for _ in range(self.K_epochs):
             # Evaluating old actions and values :
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_rnn_states, old_actions, old_type_obs)
+            # print(old_type_obs.shape)
+            # print(old_rnn_states.shape)
+
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_rnn_states.unsqueeze(0), old_actions, old_type_obs)
             
             # Finding the ratio (pi_theta / pi_theta__old):
             ratios = torch.exp(logprobs - old_logprobs.detach())
@@ -177,13 +219,77 @@ class PPO:
         return tot_value_loss / self.K_epochs
 
     # act function for test
-    def act(self, state, history=None):
-        if history == None:
+    def act(self, state, memory=None, history=None, in_training=False):
+        if type(history) != torch.Tensor:
             history = self.rnn_history
-        ac, self.rnn_history, acs = self.policy.act(state, history, self.memory_ph)
+        if memory == None:
+            memory = self.memory_ph
+        if in_training:
+            ac, self.rnn_history, acs = self.policy.act(state, history, memory)
+        else:
+            ac, self.rnn_history, acs = self.policy_old.act(state, history, memory)
         self.memory_ph.clear_memory()
         return ac, self.rnn_history, acs
     
     def rnn_reset(self):
         self.rnn_history = torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device)
         # self.memory_ph.clear_memory()
+
+    def evaluate(self, state, rnn_history, action, type_ob, in_training=False):
+        # print('in eval func:')
+        # print(rnn_history.shape)
+        # print(type_ob.shape)
+        
+        if type(type_ob) != torch.Tensor:
+            type_ob = torch.Tensor(type_ob)
+
+        if in_training:
+            return self.policy.evaluate(state, rnn_history, action, type_ob.unsqueeze(0))
+        else:
+            return self.policy_old.evaluate(state, rnn_history, action, type_ob.unsqueeze(0))
+
+
+class AtkNPAAgent:
+    def __init__(self, n_type, *args, **kwargs):
+        self.agents = [PPO(*args, **kwargs) for _ in range(n_type)]
+        # self.n_target = beliefs[0][0].shape[0]
+        self.n_type = n_type
+        self.memory_ph = Memory()
+        
+        self.rnn_history = torch.zeros_like(self.agents[0].rnn_history).float().to(device)
+    
+    def rnn_reset(self):
+        # self.rnn_history = torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device)
+        for i in range(self.n_type):
+            self.agents[i].rnn_reset()
+
+    def get_state_dict(self):
+        ret = []
+        for i in range(self.n_type):
+            ret.append(self.agents[i].get_state_dict())
+        return ret
+    
+    def set_state_dict(self, s_dict):
+        for i in range(self.n_type):
+            self.agents[i].set_state_dict(s_dict[i])
+    
+    def load_model_with_specify(self, step, belief, s_dict):
+        for i in range(self.n_type):
+            self.agents[i].load_model_with_specify(step, belief, s_dict[i])
+    
+    def update(self, memory, type_n):
+        return self.agents[type_n].update(memory)
+
+    def act(self, state, memory=None, history=None,type_n=None, in_training=False):
+        if type(history) != torch.Tensor:
+            history = self.rnn_history
+        if memory == None:
+            memory = self.memory_ph
+        if type_n != None:
+            return self.agents[type_n].act(state, memory, history, in_training)
+        else:
+            type_n = np.argmax(state[-self.n_type:])
+            return self.agents[type_n].act(state, memory, history, in_training)
+
+    def evaluate(self, state, rnn_history, action, type_ob, type_n, in_training=False):
+        return self.agents[type_n].evaluate(state, rnn_history, action, type_ob, in_training)

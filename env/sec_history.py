@@ -232,7 +232,7 @@ class SecurityEnv(BaseEnv):
         return np.concatenate(([self.rounds_so_far], self.belief, [0.], base_ob))
 
     def _get_atk_ob(self, base_ob):
-        return np.concatenate(([self.rounds_so_far], self.belief, self.type_ob, base_ob))
+        return np.concatenate(([self.rounds_so_far], self.belief, base_ob, self.type_ob))
 
     def base_ob_to_h(self, base_ob):
         s = 0

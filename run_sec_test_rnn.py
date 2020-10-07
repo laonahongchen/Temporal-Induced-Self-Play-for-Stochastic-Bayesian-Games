@@ -109,22 +109,23 @@ if __name__ == "__main__":
     seeds = [5410, 9527, 5748, 6657, 9418]
 
     # for i in range(4):
-    for i_seed in seeds:
+    # for i_seed in seeds:
 
-        env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=False,seed=i_seed)
+    env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=False,seed=args.seed)
 
-        # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
-        if train:
-            controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every,args.seed)
-            controller.train(100000)
+    # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
+    # if train:
+    controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every,args.seed)
+    controller.load_models(args.exp_name)
+        # controller.train(100000)
 
-            # print('train finish')
+        # print('train finish')
 
-            strategies = controller.ppos[0], controller.ppos[1]
-            tot_res.append(env.assess_strategies(strategies))
-            print(tot_res)
-    
+    strategies = controller.ppos[0], controller.ppos[1]
+    tot_res.append(env.assess_strategies(strategies))
     print(tot_res)
+    
+    # print(tot_res)
 # 2 3: 2.4888
 # 2 5: 4.0404
 # 2 8: 8.4958

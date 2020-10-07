@@ -16,7 +16,7 @@ from torch.distributions import Normal
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 # from agent.ppo_torch import PPO, Memory
 # from agent.bi_torch import BackInductionAgent, Memory
-from agent.ppo_rec import PPO, Memory, AtkNPAAgent
+from agent.ppo_torch import PPO, Memory, AtkNPAAgent
 # from base_controller import BaseController
 from env.base_env import BaseEnv
 
@@ -56,11 +56,11 @@ class NaiveController():
         self.max_episodes = max_episodes        # max training episodes
         self.n_steps = n_steps         # max timesteps in one episode
         self.n_latent_var = network_width           # number of variables in hidden layer
-        self.update_timestep = 100      # update policy every n timesteps
+        self.update_timestep = 500      # update policy every n timesteps
         self.lr = lr
         self.betas = betas
         self.gamma = gamma                # discount factor
-        self.K_epochs = 10                # update policy for K epochs
+        self.K_epochs = 1                # update policy for K epochs
         self.eps_clip = clip_eps              # clip parameter for PPO
         self.random_seed = seed
         #############################################
@@ -72,8 +72,7 @@ class NaiveController():
         self.memorys = []
         self.ppos = []
         # print(self.env.observation_spaces[0])
-        print(self.env.observation_spaces[0].shape)
-        print(self.env.observation_spaces[1].shape)
+        # print(self.env.observation_spaces[0].shape)
         # print(self.env.action_spaces[0])
         # print(self.env.action_spaces[0].n)
 
@@ -99,6 +98,37 @@ class NaiveController():
 
         self.env_prior = np.copy(self.env.prior)
         self.atk_prior = np.array([(1. / self.env.n_targets) for _ in range(self.env.n_targets)])
+        
+    
+    def generate_prior(self):
+        x = [0.] + sorted(np.random.rand(self.env.n_targets - 1).tolist()) + [1.]
+        prior = np.zeros(self.env.n_targets)
+        for i in range(self.env.n_targets):
+            prior[i] = x[i + 1] - x[i]
+        return prior
+
+    def _get_atk_ob(self, target, belief, last_obs_atk) :
+        # ret = np.copy(last_obs_atk)
+        # # print(ret.shape)
+        # ret = ret[1 + self.env.n_targets: -self.env.n_targets]
+        # ret = np.array([np.concatenate((belief, ret, one_hot(self.env.n_targets, target)))])
+        # # print('ret shape:')
+        # # print(ret.shape)
+        # return ret    
+        if type(last_obs_atk) == torch.Tensor:
+            ret = torch.Tensor(last_obs_atk)
+            cur_round = ret[0]
+            ret = ret[1 + self.env.n_targets: -self.env.n_targets]
+            ret = torch.stack([torch.cat((torch.Tensor([cur_round]), belief, ret, torch.Tensor(one_hot(self.env.n_targets, target))))])
+        else:
+            ret = np.copy(last_obs_atk)
+            cur_round = ret[0]
+            # print(ret.shape)
+            ret = ret[1 + self.env.n_targets : -self.env.n_targets]
+            ret = np.array([np.concatenate((cur_round, belief, ret, one_hot(self.env.n_targets, target)))])
+        # print('ret shape:')
+        # print(ret.shape)
+        return ret    
     
     def load_models(self, exp_name):
         atk_dict_path = 'models/atk_{}.pickle'.format(exp_name)
@@ -111,23 +141,7 @@ class NaiveController():
 
         self.ppos[0].set_state_dict(atk_dict_to_load)
         self.ppos[1].set_state_dict(def_dict_to_load)
-    
-    def generate_prior(self):
-        x = [0.] + sorted(np.random.rand(self.env.n_targets - 1).tolist()) + [1.]
-        prior = np.zeros(self.env.n_targets)
-        for i in range(self.env.n_targets):
-            prior[i] = x[i + 1] - x[i]
-        return prior
 
-    def _get_atk_ob(self, target, belief, last_obs_atk) :
-        ret = np.copy(last_obs_atk)
-        # print(ret.shape)
-        ret = ret[1 + self.env.n_targets: -self.env.n_targets]
-        ret = np.array([np.concatenate((belief, ret, one_hot(self.env.n_targets, target)))])
-        # print('ret shape:')
-        # print(ret.shape)
-        return ret    
-    
         # training loop
     def train(self, num_round=None, step_each_round = 2000, policy_store_every=100, 
                sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None, store_results=False):
@@ -171,15 +185,23 @@ class NaiveController():
 
                 for i in range(self.env.n_agents):
                     # pre_rnns.append(np.copy(rnn_historys[i]))
-                    pre_rnns.append(rnn_historys[i])
+                    # pre_rnns.append(rnn_historys[i])
                     # action = self.ppos[i].act(curstep, states[i], self.memorys[i])
                     if i == 0:
-                        action, rnn_historys[i], _ = self.ppos[i].act(states[i], self.atk_memorys[self.env.atk_type], rnn_historys[i], self.env.atk_type)
+                        action, _ = self.ppos[i].act(current_len, states[i], self.atk_memorys[self.env.atk_type], self.env.atk_type)
                     else:
-                        action, rnn_historys[i], _ = self.ppos[i].act(states[i], self.def_memory, rnn_historys[i])
+                        action, _ = self.ppos[i].act(current_len, states[i], self.def_memory)
                     actions.append(action)
                 
-                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), pre_rnns[0], actions[0], one_hot(self.env.n_targets, tar), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
+                v = []
+                # if current_len > 1:
+                    # for i in range(self.env.n_agents):
+                    # print('state:')
+                    # print(states[0][1:], np.array([states[0][1:]]))
+                v.append(self.ppos[0].evaluate(torch.stack([states[0]]), actions[0], type_ob, self.env.atk_type, in_training=True)[1])
+                v.append(self.ppos[1].evaluate(torch.stack([states[1]]), actions[1], type_ob, in_training=True)[1])
+                
+                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], np.array([one_hot(self.env.n_targets, tar)]), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
                 # atk_prob = 0
                 with torch.no_grad():
                     states, reward, done, _ = env.step(actions, atk_prob, False)
@@ -198,27 +220,32 @@ class NaiveController():
                 self.atk_memorys[self.env.atk_type].is_terminals.append(done)
                 self.atk_memorys[self.env.atk_type].type_obs.append(type_ob[0])
 
+                if current_len > 1:
+                    self.def_memory.next_vs.append(v[1])
+                    self.atk_memorys[self.env.atk_type].next_vs.append(v[0])
+                if done:
+                    self.def_memory.next_vs.append(torch.zeros_like(v[0]))
+                    self.atk_memorys[self.env.atk_type].next_vs.append(torch.zeros_like(v[0]))
+
                 # update if its time
                 if done and self.step % self.update_timestep == 0:
-                    # print('did update')
                     train_agent_n = int(self.step / self.update_timestep) % 2
                     # for i in range(self.env.n_agents):
                     # v_loss = self.ppos[train_agent_n].update(self.memorys[train_agent_n])
                     v_loss = 0
                     if train_agent_n == 0:
                         for type_i in range(self.env.n_types):
-                            v_loss += self.ppos[0].update(self.atk_memorys[type_i], type_i)
+                            self.ppos[0].update(self.atk_memorys[type_i], type_i)
                     else:
-                        v_loss = self.ppos[1].update(self.def_memory)
+                        self.ppos[1].update(self.def_memory)
                     # for agent_i in range(self.env.n_agents):
                         # self.memorys[agent_i].clear_memory()
                     for type_i in range(self.env.n_types):
                         self.atk_memorys[type_i].clear_memory()
                     self.def_memory.clear_memory()
                     # if timestep % 
-                    print('timestep{} updated with q loss{}'.format(timestep, v_loss))
+                    # print('timestep{} updated with q loss{}'.format(timestep, v_loss))
                     # timestep = 0
-                    # print('')
                 
                 running_reward += reward
 
@@ -227,7 +254,6 @@ class NaiveController():
                         # self.ppos[i].update(self.memorys[i])
                         # self.memorys[i].clear_memory()
                     # timestep = 0
-                    # print('done!!!!')
                     break
 
             avg_length += current_len
@@ -271,22 +297,22 @@ class NaiveController():
             def_rew = 0
             rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
             while not done:
-                pre_rnns = []
-                pre_rnns.append(rnn_historys[0])
-                pre_rnns.append(rnn_historys[1])
+                # pre_rnns = []
+                # pre_rnns.append(rnn_historys[0])
+                # pre_rnns.append(rnn_historys[1])
 
-                atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
-                def_action, rnn_historys[1], def_strategy = self.ppos[1].act(states[1], self.ppos[1].memory_ph, rnn_historys[1])
+                atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
+                def_action, def_strategy = self.ppos[1].act(cur_round, states[1], self.ppos[1].memory_ph)
                 # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
                 actions = [atk_action, def_action]
-                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), pre_rnns[0], actions[0], one_hot(self.env.n_targets, tar), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
+                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], one_hot(self.env.n_targets, tar), tar, in_training=False)[1].detach() for tar in range(self.env.n_targets)])
 
                 
                 states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
                 print('atk_strategy:')
                 # print(atk_strategy)
                 for type_i in range(self.env.n_types):
-                    _, _, atk_t_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, pre_rnns[0], type_n=type_i)
+                    _,  atk_t_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, pre_rnns[0], type_n=type_i)
                     print(atk_t_strategy)
                 print('def_strategy:')
                 print(def_strategy)

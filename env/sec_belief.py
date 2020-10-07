@@ -330,7 +330,7 @@ class SecurityEnv(BaseEnv):
         self.type_ob[self.atk_type] = 1.
         self.probs = np.ones(shape=self.num_agents, dtype=np.float32)
         self.probs[0] *= self.prior[self.atk_type]
-        self.belief = self.prior
+        self.belief = torch.Tensor(self.prior)
         return self._get_ob(), self.probs, self.ac_history
     
     def sub_reset(self, round, belief, debug=False):
@@ -351,7 +351,7 @@ class SecurityEnv(BaseEnv):
         self.type_ob[self.atk_type] = 1.
         self.probs = np.ones(shape=self.num_agents, dtype=np.float32)
         self.probs[0] *= belief[self.atk_type]
-        self.belief = belief
+        self.belief = torch.Tensor(belief)
         return self._get_ob(), self.probs, self.ac_history
     
 
@@ -644,7 +644,7 @@ class SecurityEnv(BaseEnv):
                 ob[i][1][self.n_slots] = 1.0
             else:
                 ob[i][self.n_slots] = 1.0
-        ob = np.concatenate([[r], self._convert_to_type_ob(t), self.belief,  ob[r - 1].reshape(-1)])
+        ob = np.concatenate([[r], self.belief,  ob[r - 1].reshape(-1), self._convert_to_type_ob(t)])
         return ob
 
     def convert_to_def_ob(self, history):
@@ -776,6 +776,9 @@ class SecurityEnv(BaseEnv):
                 _, def_strategy = self.strategy.act(len(history), def_ob, self.strategy.memory_ph)
                 self.strategy.memory_ph.clear_memory()
                 def_strategy = def_strategy.reshape(-1)
+                if len(history) == 0:
+                    print('def p:')
+                    print(def_strategy)
 
                 atk_strategy_type = np.zeros(shape=(self.n_slots, self.n_types))
                 for t in range(self.n_types):
@@ -787,7 +790,9 @@ class SecurityEnv(BaseEnv):
                     _, atk_strategy = self.atk_strategy.act(cur_round_, atk_ob, cur_memory_)
                     self.atk_strategy.memory_ph.clear_memory()
                     atk_strategy = atk_strategy.reshape(-1)
-                    # print(atk_strategy)
+                    if len(history) == 0:
+                        print('atk type{}'.format(t))
+                        print(atk_strategy)
                     for i in range(self.n_slots):
                         atk_strategy_type[i][t] += atk_strategy[i] * self.env.belief[t]
 

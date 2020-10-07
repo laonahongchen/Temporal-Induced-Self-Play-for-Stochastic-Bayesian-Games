@@ -1,7 +1,7 @@
 # from env.matrix_env import MatrixEnv
 # from env.tagging import TaggingEnv
-from env.security_game import SecurityEnv
-from rec_controller_torch import NaiveController
+from env.sec_belief import SecurityEnv
+from bpg_controller import NaiveController
 # import seaborn as sns
 # import pandas as pd
 import matplotlib.pyplot as plt
@@ -106,11 +106,11 @@ if __name__ == "__main__":
     res = {"episode": [], "current_assessments": [], "player": []}
     tot_res = []
 
-    seeds = [5410, 9527, 5748, 6657, 9418]
+    seeds = [5410] #, 9527, 5748, 6657, 9418]
 
     # for i in range(4):
     for i_seed in seeds:
-
+        print('start seed {}'.format(i_seed))
         env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=False,seed=i_seed)
 
         # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)

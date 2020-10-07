@@ -129,8 +129,8 @@ class SecurityEnv(BaseEnv):
 
         self.ob_shape = (max(1, n_rounds - 1), 2, n_slots + 1) if record_def else (max(1, n_rounds - 1), n_slots + 1)
         self.ob_len = np.prod(self.ob_shape[1:])
-        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types + n_types + self.ob_len])
-        dfd_ob_space = spaces.Box(low=0., high=1., shape=[n_types + 1 + self.ob_len])
+        atk_ob_space = spaces.Box(low=0., high=1., shape=[n_types + self.ob_len])
+        dfd_ob_space = spaces.Box(low=0., high=1., shape=[1 + self.ob_len])
         # print(dfd_ob_space)
         ac_space = spaces.Discrete(n_slots)
         super().__init__(num_agents=2,
@@ -223,7 +223,7 @@ class SecurityEnv(BaseEnv):
 
     def _get_base_ob(self, round=0):
         # print('error info:')
-        # print(self.ac_history.shape)
+        # print(self.ac_history[round-1].shape)
         # print(round)
         
         return self.ac_history[round - 1].reshape(-1)
@@ -232,7 +232,7 @@ class SecurityEnv(BaseEnv):
         return np.concatenate(([self.rounds_so_far], self.belief, [0.], base_ob))
 
     def _get_atk_ob(self, base_ob):
-        return np.concatenate(([self.rounds_so_far], self.belief, self.type_ob, base_ob))
+        return np.concatenate(([self.rounds_so_far], self.belief, base_ob, self.type_ob))
 
     def base_ob_to_h(self, base_ob):
         s = 0
@@ -588,7 +588,7 @@ class SecurityEnv(BaseEnv):
                 ob[i][1][self.n_slots] = 1.0
             else:
                 ob[i][self.n_slots] = 1.0
-        ob = np.concatenate([[r], self.belief, self._convert_to_type_ob(t), ob[r - 1].reshape(-1)])
+        ob = np.concatenate([[r], self.belief, ob[r - 1].reshape(-1), self._convert_to_type_ob(t)])
         return ob
 
     def convert_to_def_ob(self, history):

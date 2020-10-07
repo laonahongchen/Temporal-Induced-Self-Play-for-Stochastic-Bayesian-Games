@@ -1,7 +1,7 @@
 # from env.matrix_env import MatrixEnv
 # from env.tagging import TaggingEnv
-from env.security_game import SecurityEnv
-from rec_controller_torch import NaiveController
+from env.sec_belief import SecurityEnv
+from bpg_controller import NaiveController
 # import seaborn as sns
 # import pandas as pd
 import matplotlib.pyplot as plt
@@ -109,21 +109,18 @@ if __name__ == "__main__":
     seeds = [5410, 9527, 5748, 6657, 9418]
 
     # for i in range(4):
-    for i_seed in seeds:
+    env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=False,seed=args.seed)
 
-        env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=False,seed=i_seed)
+    # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
+    # if train:
+    controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every,args.seed)
+    controller.load_models(args.exp_name)
+        # controller.train(100000)
 
-        # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
-        if train:
-            controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every,args.seed)
-            controller.train(100000)
+        # print('train finish')
 
-            # print('train finish')
-
-            strategies = controller.ppos[0], controller.ppos[1]
-            tot_res.append(env.assess_strategies(strategies))
-            print(tot_res)
-    
+    strategies = controller.ppos[0], controller.ppos[1]
+    tot_res.append(env.assess_strategies(strategies))
     print(tot_res)
 # 2 3: 2.4888
 # 2 5: 4.0404
