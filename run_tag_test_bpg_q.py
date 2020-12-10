@@ -1,6 +1,6 @@
 # from env.matrix_env import MatrixEnv
-# from env.tagging import TaggingEnv
-from env.sec_belief import SecurityEnv
+from env.tagging import TaggingEnv
+# from env.security_game import SecurityEnv
 from bpg_controller import NaiveController
 # import seaborn as sns
 # import pandas as pd
@@ -23,11 +23,11 @@ def parse_args():
 
     parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--episodes', type=int, default=1000)
-    parser.add_argument('--n-steps', type=int, default=10)
+    parser.add_argument('--n-steps', type=int, default=5)
     parser.add_argument('--n-belief', type=int, default=10)
     parser.add_argument('--steps-per-round', type=int, default=5)
     parser.add_argument('--prior', type=float, nargs='+', default=[0.5, 0.5])
-    parser.add_argument('--learning-rate', type=float, default=5e-3)
+    parser.add_argument('--learning-rate', type=float, default=5e-4)
     parser.add_argument('--test-every', type=int, default=10)
     parser.add_argument('--save-every', type=int)
     parser.add_argument('--load', action="store_true")
@@ -105,24 +105,20 @@ if __name__ == "__main__":
 
     res = {"episode": [], "current_assessments": [], "player": []}
     tot_res = []
+        # env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=True,seed=args.seed + i)
+    env = TaggingEnv(n_steps=n_steps, prior=prior)
 
-    seeds = [5410 , 9527, 5748, 6657, 9418]
+    # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
+    if train:
+        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every,args.seed)
+        # controller.train(500000)
 
-    # for i in range(4):
-    for i_seed in seeds:
-        print('start seed {}'.format(i_seed))
-        env = SecurityEnv(n_slots=2,n_types=2,n_rounds=n_steps, prior=prior,zero_sum=False,seed=i_seed)
-
-        # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
-        if train:
-            controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every,args.seed)
-            controller.train(100000)
+        controller.calculate_exploitability(exp_name=args.exp_name)
 
             # print('train finish')
 
-            strategies = controller.ppos[0], controller.ppos[1]
-            tot_res.append(env.assess_strategies(strategies))
-            print(tot_res)
+            # strategies = controller.ppos[0], controller.ppos[1]
+            # tot_res.append(env.assess_strategies(strategies))
     
     print(tot_res)
 # 2 3: 2.4888

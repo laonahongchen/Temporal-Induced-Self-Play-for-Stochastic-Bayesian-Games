@@ -109,7 +109,8 @@ if __name__ == "__main__":
     res = {"episode": [], "current_assessments": [], "player": []}
 
     tot_res = []
-    seeds = [5410, 9527, 5748]#, 6657, 9418]
+    # seeds = [5410, 9527, 5748]#
+    seeds = [6657, 9418]
 
     # for i in range(4):
     for i_seed in seeds:

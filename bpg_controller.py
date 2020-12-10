@@ -17,6 +17,8 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 # from agent.ppo_torch import PPO, Memory
 # from agent.bi_torch import BackInductionAgent, Memory
 from agent.ppo_torch import PPO, Memory, AtkNPAAgent
+from agent.ppo_torch import PPO as test_PPO
+from agent.ppo_torch import Memory as test_Memory
 # from base_controller import BaseController
 from env.base_env import BaseEnv
 
@@ -141,6 +143,67 @@ class NaiveController():
 
         self.ppos[0].set_state_dict(atk_dict_to_load)
         self.ppos[1].set_state_dict(def_dict_to_load)
+    
+    def _get_atk_ob_full(self, target, belief, last_obs_atk):
+        if type(last_obs_atk) == torch.Tensor:
+            ret = torch.Tensor(last_obs_atk)
+            cur_round = ret[0]
+            ret = ret[1 + self.env.n_targets: -self.env.n_targets]
+
+            ret = torch.stack([torch.cat((torch.Tensor([cur_round]), belief, ret, torch.Tensor(one_hot(self.env.n_targets, target))))])
+        else:
+            ret = np.copy(last_obs_atk)
+            # print(ret.shape)
+            cur_round = ret[0]
+            ret = ret[1 + self.env.n_targets: -self.env.n_targets]
+            ret = np.array([np.concatenate((torch.Tensor([cur_round]), belief, ret, one_hot(self.env.n_targets, target)))])
+        # print('ret shape:')
+        # print(ret.shape)
+        return ret    
+    
+    def test_env_input(self, exp_name):
+        self.load_models(exp_name)
+
+        print('input round, zero base')
+        cur_round = int(input())
+        print('input atk place')
+        atk_x, atk_y = input().split()
+        atk_x = int(atk_x)
+        atk_y = int(atk_y)
+        atk_p = np.array([atk_x, atk_y])
+        print('input def place')
+        def_x, def_y = input().split()
+        def_x = int(def_x)
+        def_y = int(def_y)
+        def_p = np.array([def_x, def_y])
+        print('input belief')
+        b1, b2 = input().split()
+        b1 = float(b1)
+        b2 = float(b2)
+        b = torch.Tensor([b1, b2])
+
+        states, _, _ = self.env.reset_to_state_with_type((atk_p, def_p), b, 0)
+
+        print('test state is:')
+        print(states)
+
+        print('atk_strategy:')
+        # print(atk_strategy)
+        for type_i in range(self.env.n_types):
+            _, atk_t_strategy = self.ppos[0].act(cur_round, self._get_atk_ob_full(type_i, self.env.belief, states[0])[0], self.ppos[0].memory_ph, type_n=type_i)
+            print(atk_t_strategy)
+        
+        atk_action = 0
+        def_action, def_strategy = self.ppos[1].act(cur_round, states[1], self.ppos[1].memory_ph)
+        # states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
+        
+        print('def_strategy:')
+        print(def_strategy)
+        print('value:')
+        atk_values = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, np.array([one_hot(self.env.n_targets, tar)]), tar, in_training=False)[1].detach() for tar in range(self.env.n_targets)])
+        def_values = self.ppos[1].evaluate(torch.stack([states[1]]), def_action, np.array([one_hot(self.env.n_targets, self.env.atk_type)]))[1].detach()
+        print(atk_values)
+        print(def_values)
 
         # training loop
     def train(self, num_round=None, step_each_round = 2000, policy_store_every=100, 
@@ -153,11 +216,11 @@ class NaiveController():
         running_reward = np.zeros((self.env.n_agents))
         avg_length = 0
         timestep = 0
-        
+        update_agent_num = 0
 
         while self.step < num_round:
             self.step += 1
-            update_agent_num = int(self.step / self.update_timestep) % 2
+            # update_agent_num = int(self.step / self.update_timestep) % 2
             if update_agent_num == 0:
                 self.env.set_prior(self.atk_prior)
             else:
@@ -203,8 +266,8 @@ class NaiveController():
                 
                 atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], np.array([one_hot(self.env.n_targets, tar)]), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
                 # atk_prob = 0
-                with torch.no_grad():
-                    states, reward, done, _ = env.step(actions, atk_prob, False)
+                # with torch.no_grad():
+                states, reward, done, _ = env.step(actions, atk_prob)
                 
                 # Saving reward and is_terminal:
                 # for i in range(self.env.n_agents):
@@ -229,11 +292,11 @@ class NaiveController():
 
                 # update if its time
                 if done and self.step % self.update_timestep == 0:
-                    train_agent_n = int(self.step / self.update_timestep) % 2
+                    # train_agent_n = int(self.step / self.update_timestep) % 2
                     # for i in range(self.env.n_agents):
                     # v_loss = self.ppos[train_agent_n].update(self.memorys[train_agent_n])
                     v_loss = 0
-                    if train_agent_n == 0:
+                    if update_agent_num == 0:
                         for type_i in range(self.env.n_types):
                             self.ppos[0].update(self.atk_memorys[type_i], type_i)
                     else:
@@ -243,6 +306,7 @@ class NaiveController():
                     for type_i in range(self.env.n_types):
                         self.atk_memorys[type_i].clear_memory()
                     self.def_memory.clear_memory()
+                    update_agent_num = (update_agent_num + 1) % 2
                     # if timestep % 
                     # print('timestep{} updated with q loss{}'.format(timestep, v_loss))
                     # timestep = 0
@@ -281,6 +345,169 @@ class NaiveController():
             #     running_reward = np.zeros((self.env.n_agents))
             #     avg_length = 0
     
+    def calculate_exploitability(self, single_train_round=100000, episodes_test=100, exp_name=None):
+        if exp_name != None:
+            self.load_models(exp_name)
+        self.step = 0
+        env = self.env
+        # if num_round == None:
+            # num_round = self.max_episodes
+        
+        running_reward = np.zeros((self.env.n_agents))
+        avg_length = 0
+        timestep = 0
+        state_dim = self.env.observation_spaces[1].shape[0]
+        action_dim = self.env.action_spaces[1].n
+        train_agent = test_PPO(state_dim + self.env.n_targets, action_dim, self.n_latent_var, self.lr, self.betas[1], self.gamma, self.K_epochs, self.eps_clip, self.env.n_targets)
+        train_memory = test_Memory()
+
+        # update_agent_num = 0
+
+        while self.step < single_train_round:
+            self.step += 1
+            # update_agent_num = int(self.step / self.update_timestep) % 2
+            # if update_agent_num == 0:
+                # self.env.set_prior(self.atk_prior)
+            # else:
+            self.env.set_prior(self.env_prior)
+
+            states, _, _ = self.env.reset()
+            type_ob = np.zeros((1, self.env.n_targets))
+            type_ob[0, self.env.atk_type] = 1.
+            type_ob = torch.from_numpy(type_ob).float().to(device)
+            # print('state shape:')
+            # print(states[0].shape)
+            rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
+            
+            # rnn_history = torch.from_numpy(rnn_history).float().to(device)
+            
+            current_len = 0
+
+            while True:
+                timestep += 1
+                current_len += 1
+                # curstep = substep
+                
+                actions = []
+                pre_rnns = []
+                pre_rnns.append(rnn_historys[0])
+
+                # for i in range(self.env.n_agents):
+                #     # pre_rnns.append(np.copy(rnn_historys[i]))
+                #     # pre_rnns.append(rnn_historys[i])
+                #     # action = self.ppos[i].act(curstep, states[i], self.memorys[i])
+                #     if i == 0:
+                #         action, _ = self.ppos[i].act(current_len, states[i], self.atk_memorys[self.env.atk_type], self.env.atk_type)
+                #     else:
+                #         action, _ = self.ppos[i].act(current_len, states[i], self.def_memory)
+                #     actions.append(action)
+                atk_action, _ = self.ppos[0].act(current_len, states[0], self.atk_memorys[self.env.atk_type], self.env.atk_type)
+                actions.append(atk_action)
+                action, _ = train_agent.act(current_len, states[1], train_memory)
+                actions.append(action)
+                
+                # v = []
+                # if current_len > 1:
+                    # for i in range(self.env.n_agents):
+                    # print('state:')
+                    # print(states[0][1:], np.array([states[0][1:]]))
+                # v.append(self.ppos[0].evaluate(torch.stack([states[0]]), actions[0], type_ob, self.env.atk_type, in_training=True)[1])
+                v = train_agent.evaluate(torch.stack([states[1]]), actions[1], type_ob, in_training=True)[1]
+                
+                # atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], np.array([one_hot(self.env.n_targets, tar)]), tar, in_training=False)[1].detach() for tar in range(self.env.n_targets)])
+                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], np.array([one_hot(self.env.n_targets, tar)]), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
+                # with torch.no_grad():
+                states, reward, done, _ = env.step(actions, atk_prob)
+                
+                # Saving reward and is_terminal:
+                # for i in range(self.env.n_agents):
+                #     self.memorys[i].rewards.append(reward[i])
+                #     self.memorys[i].is_terminals.append(done)
+                #     self.memorys[i].type_obs.append(type_ob[0])
+                
+                train_memory.rewards.append(reward[1])
+                train_memory.is_terminals.append(done)
+                train_memory.type_obs.append(type_ob[0])
+                if current_len > 1:
+                    train_memory.next_vs.append(v)
+                    # self.atk_memorys[self.env.atk_type].next_vs.append(v[0])
+                if done:
+                    train_memory.next_vs.append(torch.zeros_like(v))
+                    # self.atk_memorys[self.env.atk_type].next_vs.append(torch.zeros_like(v[0]))
+
+                # update if its time
+                if done and self.step % self.update_timestep == 0:
+                    # train_agent_n = int(self.step / self.update_timestep) % 2
+                    # for i in range(self.env.n_agents):
+                    # v_loss = self.ppos[train_agent_n].update(self.memorys[train_agent_n])
+                    v_loss = 0
+                    train_agent.update(train_memory)
+                    # for agent_i in range(self.env.n_agents):
+                        # self.memorys[agent_i].clear_memory()
+                    # for type_i in range(self.env.n_types):
+                        # self.atk_memorys[type_i].clear_memory()
+                    train_memory.clear_memory()
+                    # update_agent_num = (update_agent_num + 1) % 2
+                    # if timestep % 
+                    # print('timestep{} updated with q loss{}'.format(timestep, v_loss))
+                    # timestep = 0
+                
+                running_reward += reward
+
+                if done:
+                    # for i in range(self.env.n_agents):
+                        # self.ppos[i].update(self.memorys[i])
+                        # self.memorys[i].clear_memory()
+                    # timestep = 0
+                    break
+        
+        atk_rews = [0 for _ in range(self.env.n_types)]
+        def_rews = [0 for _ in range(self.env.n_types)]
+        type_cnt = [0 for _ in range(self.env.n_types)]
+        for i in range(episodes_test):
+            cur_round = 0
+            states, _, _ = self.env.reset()
+            print('new episode:')
+            # states, _, _ = self.env.sub_reset(0, self.env.prior)
+            cur_type = self.env.atk_type
+            type_cnt[cur_type] += 1
+            done = False
+            atk_rew = 0
+            def_rew = 0
+            rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
+            while not done:
+                pre_rnns = []
+                pre_rnns.append(rnn_historys[0])
+                pre_rnns.append(rnn_historys[1])
+
+                # atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
+                atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
+                def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+                # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
+                actions = [atk_action, def_action]
+                # atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), pre_rnns[0], actions[0], one_hot(self.env.n_targets, tar), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
+                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], np.array([one_hot(self.env.n_targets, tar)]), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
+                
+                states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
+                print('atk_strategy:')
+                # print(atk_strategy)
+                for type_i in range(self.env.n_types):
+                    _,  atk_t_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=type_i)
+                    print(atk_t_strategy)
+                print('def_strategy:')
+                print(def_strategy)
+
+                atk_rew += rew[0]
+                def_rew += rew[1]
+
+                cur_round += 1
+            atk_rews[cur_type] += atk_rew
+            def_rews[cur_type] += def_rew
+
+        for type_i in range(self.env.n_types):
+            if type_cnt[type_i] != 0:
+                print('type {}: sampled {} times, atk_avg_rew: {}, def_avg_rew: {}'.format(type_i, type_cnt[type_i], atk_rews[type_i] / type_cnt[type_i], def_rews[type_i] / type_cnt[type_i]))
+
     def assess_strategy(self, episodes_test=100):
         atk_rews = [0 for _ in range(self.env.n_types)]
         def_rews = [0 for _ in range(self.env.n_types)]
@@ -297,9 +524,9 @@ class NaiveController():
             def_rew = 0
             rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
             while not done:
-                # pre_rnns = []
-                # pre_rnns.append(rnn_historys[0])
-                # pre_rnns.append(rnn_historys[1])
+                pre_rnns = []
+                pre_rnns.append(rnn_historys[0])
+                pre_rnns.append(rnn_historys[1])
 
                 atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
                 def_action, def_strategy = self.ppos[1].act(cur_round, states[1], self.ppos[1].memory_ph)

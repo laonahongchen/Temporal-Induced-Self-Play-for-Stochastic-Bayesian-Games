@@ -37,6 +37,7 @@ class TaggingEnv(BaseEnv):
         self.prior = prior
         self.is_atk = is_atk
         self.random_prior = False
+        self.seed = seed
 
         self.grids = np.zeros((8, 8))
         self.zero_sum = True
@@ -49,7 +50,7 @@ class TaggingEnv(BaseEnv):
         # For one cell, the possible result is nothing, fruits, either agents, both agents
         # The last observation for the attacker is its goal
         # observation_spaces = [spaces.Tuple(spaces.Box(low=0., high=8., shape=[4]), spaces.Box(low=0., high=1., shape=[4])), spaces.Tuple(spaces.Box(low=0., high=8., shape=[2]), spaces.Box(low=0., high=1., shape=[4]))]
-        observation_spaces = [spaces.Box(low=0., high=8., shape=[6]), spaces.Box(low=0., high=8., shape=[6])]
+        observation_spaces = [spaces.Box(low=0., high=8., shape=[9]), spaces.Box(low=0., high=8., shape=[9])]
 
         action_spaces = [spaces.Discrete(4), spaces.Discrete(5)]
 
@@ -70,8 +71,13 @@ class TaggingEnv(BaseEnv):
             self.dfd_policy = policy
 
     def _get_obs(self):
-        atk_obs = np.array([self.att_p, self.def_p]).reshape(-1)
+        x1, y1 = self.att_p
+        x2, y2 = self.def_p
+
+        atk_obs = np.array([self.att_p, self.def_p, [x1 - x2, y1 - y2], [1 if calc_dis(self.def_p, self.att_p) <= 6.25 ** 0.2 and self.att_p[0] < self.grids.shape[0] / 2 else 0, 0]]).reshape(-1)[:-1]
         def_obs = np.copy(atk_obs)
+        # print(atk_obs)
+        # print()
         # atk_obs = self.grids.reshape(-1)
         # atk_obs = n_one_hot(4, atk_obs)
         # def_obs = self.grids.reshape(-1)
@@ -79,11 +85,12 @@ class TaggingEnv(BaseEnv):
         
         # atk_obs = np.concatenate((np.array([self.round_cnt]), self.belief, atk_obs, one_hot(self.n_targets, self.goal)))
         atk_obs = torch.cat((torch.Tensor([self.round_cnt]), torch.Tensor(self.belief), torch.Tensor(atk_obs), torch.Tensor(one_hot(self.n_targets, self.goal))))
-        if np.random.rand() < 0.8:
-            # def_obs = np.concatenate((np.array([self.round_cnt]), self.belief, def_obs, one_hot(self.n_targets, self.goal)))
-            def_obs = torch.cat((torch.Tensor([self.round_cnt]), torch.Tensor(self.belief), torch.Tensor(def_obs), torch.Tensor(one_hot(self.n_targets, self.goal))))
-        else:
-            def_obs = torch.cat((torch.Tensor([self.round_cnt]), torch.Tensor(self.belief), torch.Tensor(def_obs), torch.Tensor(one_hot(self.n_targets, 1 - self.goal))))
+        def_obs = torch.cat((torch.Tensor([self.round_cnt]), torch.Tensor(self.belief), torch.Tensor(def_obs), torch.zeros(self.n_targets)))
+        # if np.random.rand() < 0.8:
+        #     # def_obs = np.concatenate((np.array([self.round_cnt]), self.belief, def_obs, one_hot(self.n_targets, self.goal)))
+        #     def_obs = torch.cat((torch.Tensor([self.round_cnt]), torch.Tensor(self.belief), torch.Tensor(def_obs), torch.Tensor(one_hot(self.n_targets, self.goal))))
+        # else:
+        #     def_obs = torch.cat((torch.Tensor([self.round_cnt]), torch.Tensor(self.belief), torch.Tensor(def_obs), torch.Tensor(one_hot(self.n_targets, 1 - self.goal))))
             # def_obs = np.concatenate((np.array([self.round_cnt]), self.belief, one_hot(self.n_targets, 1 - self.goal), def_obs))
         
         # return [np.array(atk_obs), np.array(def_obs)]
@@ -102,7 +109,7 @@ class TaggingEnv(BaseEnv):
     def reset(self, debug=False, verbose=False):
         self.round_cnt = 0
         self.prob_cnt = 0
-        self.att_p = [0, np.random.randint(8)]
+        self.att_p = [0, 4]
         self.def_p = [np.random.randint(4), np.random.randint(8)]
         if self.random_prior:
             self.prior = self.generate_prior()
@@ -127,8 +134,8 @@ class TaggingEnv(BaseEnv):
 
         self.round_cnt = round
         self.prob_cnt = 0
-        self.att_p = [0, np.random.randint(8)]
-        self.def_p = [np.random.randint(8), np.random.randint(8)]
+        self.att_p = [np.random.randint(8), np.random.randint(8)]
+        self.def_p = [np.random.randint(4), np.random.randint(8)]
         self.atk_type = self.goal = self.type = np.random.choice(self.n_targets, p=belief)
 
         # print(self.att_p, self.def_p)
@@ -195,8 +202,8 @@ class TaggingEnv(BaseEnv):
         # print('atk ob shape')
         # print(ret.shape)
         obs_round = ret[0]
-        ret = ret[4:]
-        ret = np.concatenate((obs_round, belief, one_hot(self.n_targets, target), ret))
+        ret = ret[1 + self.env.n_targets: -self.env.n_targets]
+        ret = np.concatenate((obs_round, belief, ret, one_hot(self.n_targets, target)))
         # ret[1] = belief[0]
         # ret[2] = belief[1]
         # print(ret.shape)
@@ -209,6 +216,11 @@ class TaggingEnv(BaseEnv):
             self.dfd_policy = policy
 
     def step(self, actions, probs=None, verbose=False):
+        if actions[1] == 4 and not (calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2 and self.att_p[0] < self.grids.shape[0] / 2):
+            # actions[1] = 0
+            print(self._get_obs())
+            assert False
+
         if verbose or self.debug:
             print('atk pos:')
             print(self.att_p)
@@ -238,7 +250,7 @@ class TaggingEnv(BaseEnv):
 
         att_p_bak = np.copy(self.att_p)
         self.att_p[0] += self.v[actions[0]][0]
-        self.att_p[1] += self.v[actions[1]][0]
+        self.att_p[1] += self.v[actions[0]][1]
         x, y = self.att_p
         if x < 0 or x >= self.grids.shape[0] or y < 0 or y >= self.grids.shape[1]:
             self.att_p = np.copy(att_p_bak)
@@ -261,28 +273,37 @@ class TaggingEnv(BaseEnv):
         if actions[1] == 5:
             self.prob_cnt = self.prob_cnt + 1
             rew_def -= 0.25 * self.prob_cnt
-        elif actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2:
+            assert False
+        elif actions[1] == 4: # and calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2 and self.att_p[0] < self.grids.shape[0] / 2:
             # obs_ret[1][-1] = 2
+            # print('do tag!!!')
             obs_ret[1][-1] = obs_ret[1][-2] = 0
             if self.type > 0:
                 rew_atk = -10
                 rew_def = 10
             else:
                 rew_def = -20
+                rew_atk = -10
         else:
             # obs_ret[1][-1] = 2
             obs_ret[1][-1] = obs_ret[1][-2] = 0
+            if actions[1] > 3:
+                print('error action!')
+                print(actions)
+                print(calc_dis(self.att_p, self.def_p))
+                print(self.att_p)
         
         rew = (rew_atk, rew_def)
 
-        done = self.round_cnt >= self.n_rounds or np.all(self.att_p == self.target[self.goal]) or (actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2)
+        done = self.round_cnt >= self.n_rounds 
+        # or np.all(self.att_p == self.target[self.goal]) or (actions[1] == 4 and calc_dis(self.att_p, self.def_p) <= 6.25 ** 0.2)
         # print(obs_ret.shape)
         self.last_obs_n = obs_ret
 
         return (obs_ret,
                 rew,
                 done,
-                None)
+                actions)
     
 
 

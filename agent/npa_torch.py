@@ -376,12 +376,14 @@ class NPAAgent:
     
     def set_state_dict(self, s_dict):
         # print(s_dict)
-        # print(self.n_step)
+        print(self.n_step)
         # print(len(s_dict))
-        for i in range(self.n_step):
+        # for i in range(self.n_step):
+        for i in range(-self.n_step, 0):
             # print(i)
             cur_dict = s_dict[i]
             for j in range(self.n_belief):
+                # print(i, j, type(cur_dict[j]))
                 self.agents[i][j].set_state_dict(cur_dict[j])
 
     def load_model_with_specify(self, step, b, s_dict):
