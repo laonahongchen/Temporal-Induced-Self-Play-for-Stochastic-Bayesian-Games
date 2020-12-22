@@ -23,9 +23,10 @@ def parse_args():
     parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--episodes', type=int, default=1)
     parser.add_argument('--n-steps', type=int, default=20)
+    parser.add_argument('--train-round', type=int, default=0)
+    parser.add_argument('--train-belief', type=int, default=0)
     parser.add_argument('--n-belief', type=int, default=10)
     parser.add_argument('--max-process', type=int, default=2)
-    parser.add_argument('--total-process', type=int, default=64)
     parser.add_argument('--steps-per-round', type=int, default=5)
     parser.add_argument('--prior', type=float, nargs='+', default=[0.5, 0.5])
     parser.add_argument('--learning-rate', type=float, default=5e-4)
@@ -42,11 +43,13 @@ def parse_args():
     parser.add_argument('--sub-load-path', type=str)
     parser.add_argument('--timesteps-per-batch', type=int, default=8)
     parser.add_argument('--iterations-per-round', type=int, default=16)
-    parser.add_argument('--exp-name', type=str, default=None)
+    parser.add_argument('--exp-name', type=str)
     parser.add_argument('--other', type=str, default='')
     parser.add_argument('--seed', type=int, default=377)
     parser.add_argument('--k-epochs', type=int, default=1000)
     parser.add_argument('--v-batch-size', type=int, default=100000)
+    parser.add_argument('--num-thread', type=int, default=5)
+    parser.add_argument('--total-process', type=int, default=64)
 
     return parser.parse_args()
 
@@ -111,6 +114,6 @@ if __name__ == "__main__":
     # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
     if train:
         controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, k_epochs=args.k_epochs,max_process=args.max_process, v_batch_size=args.v_batch_size, total_process=args.total_process, seed = args.seed)
-        controller.train_main_process(round_each_belief=max_steps, continue_name=args.exp_name)
+        controller.train_belief(args.train_round, args.train_belief, max_steps, args.exp_name)
 
         # controller.assess_strategy()

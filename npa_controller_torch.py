@@ -48,7 +48,7 @@ def load_model(f_path):
     return model
 
 class NaiveController():
-    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, k_epochs=1000, max_process=3, v_batch_size=100000, seed=None):
+    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, k_epochs=1000, max_process=3, v_batch_size=100000, total_process=64,seed=None):
     ############## Hyperparameters ##############
         # env_name = "LunarLander-v2"
         # creating environment
@@ -73,7 +73,11 @@ class NaiveController():
         self.random_seed = seed
         self.n_belief = n_belief
         self.max_process = max_process
+        self.total_process = total_process
+        self.thread_each_process = self.total_process // self.max_process
         #############################################
+
+        torch.set_num_threads(self.thread_each_process)
         
         if self.random_seed is not None:
             torch.manual_seed(self.random_seed)
@@ -464,7 +468,7 @@ class NaiveController():
                     if os.path.exists('models/atk_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b)) and os.path.exists('models/def_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b)):
                         continue
 
-                    arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}".format(exp_name), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep)]
+                    arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}".format(exp_name), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
 
                     sp = subprocess.Popen(arg)
                     sp_lists.append(sp)
