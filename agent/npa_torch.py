@@ -14,7 +14,7 @@ device = torch.device("cpu")
 def save_model(model, f_path):
     with open(f_path, 'wb') as f:
         pickle.dump(model, f, pickle.HIGHEST_PROTOCOL)
-    print('model saved to {}'.format(f_path))
+    # print('samples saved to {}'.format(f_path))
 
 def load_model(f_path):
     with open(f_path, 'rb') as f:
@@ -40,7 +40,7 @@ class Memory:
         del self.is_terminals[:]
         del self.type_obs[:]
         del self.next_vs[:]
-        del self.start_num
+        # del self.start_num
         gc.collect()
     
     def first_step(self, reward):
@@ -224,10 +224,10 @@ class PPO:
 
         
         # print attacker
-        if self.action_dim > 4:
-            print('reward:')
-            print(rewards[old_actions > 3][:20])
-            print(old_states[old_actions > 3][:20])
+        # if self.action_dim > 4:
+        #     print('reward:')
+        #     print(rewards[old_actions > 3][:20])
+        #     print(old_states[old_actions > 3][:20])
 
         tot_value_loss = 0
         tot_loss = 0

@@ -694,6 +694,8 @@ class NaiveController():
         atk_dict = self.ppos[0].get_state_dict()
         def_dict = self.ppos[1].get_state_dict()
 
+        starting_time = datetime.now()
+
         save_model(atk_dict, 'models/atk_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
         save_model(def_dict, 'models/def_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
         for i_episode in range(round_each_belief // self.update_timestep):
@@ -749,7 +751,9 @@ class NaiveController():
             
             # for type_i in range(len(self.atk_memorys)):
             #     self.atk_memorys[type_i].clear_memory()
-            # print('{}: updated. loss: {:.4f}'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), tot_loss))
+            print('{}: updated. loss: {:.4f}'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), tot_loss))
+            expected_finish_time = starting_time + (datetime.now() - starting_time) * (round_each_belief // self.update_timestep) / (i_episode + 1)
+            print('Trained {}\%. Expected policy training finish time: {}'.format((i_episode + 1) *100 / (round_each_belief // self.update_timestep), expected_finish_time.strftime("%m/%d/%Y, %H:%M:%S")))
             update_agent_num = (update_agent_num + 1) % 2
 
             # save_model()
@@ -757,7 +761,7 @@ class NaiveController():
 
             # done_cnt = 0
         # timestep = 0
-        
+        starting_time = datetime.now()
         
         # print('tot v step:')
         # print(self.v_update_timestep)
