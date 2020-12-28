@@ -405,7 +405,7 @@ class NPAAgent:
     
     def set_state_dict(self, s_dict):
         # print(s_dict)
-        print(self.n_step)
+        # print(self.n_step)
         # print(len(s_dict))
         # for i in range(self.n_step):
         for i in range(-self.n_step, 0):
