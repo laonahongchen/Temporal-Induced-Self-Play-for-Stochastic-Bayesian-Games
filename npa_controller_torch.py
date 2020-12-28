@@ -40,7 +40,7 @@ def one_hot(n, i):
 def save_model(model, f_path):
     with open(f_path, 'wb') as f:
         pickle.dump(model, f, pickle.HIGHEST_PROTOCOL)
-    print('model saved to {}'.format(f_path))
+    # print('model saved to {}'.format(f_path))
 
 def load_model(f_path):
     with open(f_path, 'rb') as f:
@@ -675,9 +675,9 @@ class NaiveController():
                     break
                 
         # sampler_name = exp_name + '_sampler'
-        self.def_memory.save_samples('results/def_memory_{}.pickle'.format(exp_name))
+        self.def_memory.save_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, exp_name))
         for type_i in range(self.env.n_types):
-            self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_{}'.format(type_i, exp_name))
+            self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}'.format(type_i, substep, b, exp_name))
                 
                         
 
@@ -713,8 +713,8 @@ class NaiveController():
             for i_samplers in range(self.n_sampler):
                 sampler_name = '{}_sampler_{}'.format(exp_name, i_samplers)
                 for type_i in range(self.env.n_types):
-                    self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_{}'.format(type_i, sampler_name))
-                self.def_memory.load_samples('results/def_memory_{}.pickle'.format(sampler_name))
+                    self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}'.format(type_i, substep, b, sampler_name))
+                self.def_memory.load_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
 
             print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
                         
