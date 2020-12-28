@@ -74,7 +74,9 @@ class NaiveController():
         self.n_belief = n_belief
         self.max_process = max_process
         self.total_process = total_process
-        self.thread_each_process = self.total_process // self.max_process
+        self.n_sampler = 4
+        self.thread_each_process = self.total_process // (self.max_process * self.n_sampler)
+        
         #############################################
 
         torch.set_num_threads(self.thread_each_process)
@@ -104,8 +106,8 @@ class NaiveController():
             new_belief[i] = 1
             atk_belief_n.append(np.copy(new_belief))
         self.atk_belief = [atk_belief_n for i in range(self.env.n_steps)]
-        print('atk belief:')
-        print(self.atk_belief)
+        # print('atk belief:')
+        # print(self.atk_belief)
         self.beliefs_n = [self.atk_belief, self.beliefs]
         self.n_belief_n = [self.env.n_targets, self.n_belief]
         self.env_prior = np.copy(self.env.prior)
@@ -569,20 +571,32 @@ class NaiveController():
         print(atk_values)
         print(def_values)
 
+    # sample the samples for train_belief
+    def sample_belief(self, substep, b, n_samples, exp_name):
+        # while the input exp_name has the sampler number in it, we need to remove it to get the current model
+        true_exp_name = exp_name[:-10]
+        # print('true_exp_name:')
+        # print(true_exp_name)
 
-
-    # train the <b> th belief of round <substep> for <round_each_belief> time
-    def train_belief(self, substep, b, round_each_belief, exp_name):
+        # load all the models to be sampled
         if substep != self.env.n_steps - 1:
-            self.load_all_models(exp_name)
+            self.load_all_models(true_exp_name)
+        
+        atk_dict_path = 'models/atk_{}_round_{}_belief_{}.pickle'.format(true_exp_name, substep, b)
+        atk_dict_to_load = load_model(atk_dict_path)
+        def_dict_path = 'models/def_{}_round_{}_belief_{}.pickle'.format(true_exp_name, substep, b)
+        def_dict_to_load = load_model(def_dict_path)
+        self.ppos[0].load_model_with_specify(substep, b, atk_dict_to_load)
+        self.ppos[1].load_model_with_specify(substep, b, def_dict_to_load)
+
+        # 
 
         update_agent_num = 0
         done_cnt = 0
 
         all_rewards_in_train = []
 
-
-        for i_episode in range(round_each_belief):
+        for i_episode in range(self.update_timestep):
             # print('policy {} updating'.format(i_episode))
 
             # update_agent_num = int(i_episode / self.update_timestep) % 2
@@ -656,59 +670,94 @@ class NaiveController():
                 self.atk_memorys[self.env.atk_type].type_obs.append(type_ob[0])
 
                 cur_rew += reward
-                
-                
-                # update if its time
-                # if timestep % update_timestep == 0:
-                #     for i in range(self.env.n_agents):
-                #         ppos[i][substep].update(memory[i][substep])
-                #         memorys[i][substep].clear_memory()
-                #     timestep = 0
-                
-                # if substep == 0:
-                #     # running_reward[env.type] += reward
-                #     curreward += reward
 
                 if done:
-                    done_cnt += 1
-                    all_rewards_in_train.append(cur_rew)
-
-                    if done_cnt % self.update_timestep == 0 or i_episode == round_each_belief - 1:
-                        # for i in range(self.env.n_agents):
-                        # print('done cnt:')
-                        # print(done_cnt)
-                        print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
-                        
-                        if update_agent_num == 1:
-                            tot_loss = self.ppos[1].update(substep, self.def_memory)
-                        else:
-                            cntupd = 0
-                            v_loss, tot_loss = 0, 0
-                            for type_i in range(len(self.atk_memorys)):
-                                if len(self.atk_memorys[type_i].rewards) > 1:
-                                    tot_loss_t = self.ppos[0].update(substep, self.atk_memorys[type_i], type_i)
-                                    cntupd += 1
-                                    # v_loss += v_loss_t
-                                    tot_loss += tot_loss_t
-                            # v_loss /= cntupd
-                            tot_loss /= cntupd
-                        # v_loss += v_loss_t
-                        # tot_loss += tot_loss_t
-                        
-
-                        self.def_memory.clear_memory()
-                        
-                        # self.memorys[update_agent_num].clear_memory()
-                        # for agent_i in range(self.env.n_agents):
-                            # self.memorys[agent_i].clear_memory()
-                        
-                        for type_i in range(len(self.atk_memorys)):
-                            self.atk_memorys[type_i].clear_memory()
-                        print('{}: updated. loss: {:.4f}'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), tot_loss))
-                        update_agent_num = (update_agent_num + 1) % 2
-                        # done_cnt = 0
-                    # timestep = 0
                     break
+                
+        # sampler_name = exp_name + '_sampler'
+        self.def_memory.save_samples('results/def_memory_{}.pickle'.format(exp_name))
+        for type_i in range(self.env.n_types):
+            self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_{}'.format(type_i, exp_name))
+                
+                        
+
+    # train the <b> th belief of round <substep> for <round_each_belief> time
+    def train_belief(self, substep, b, round_each_belief, exp_name, subpros_name='run_tag_sample'):
+        if substep != self.env.n_steps - 1:
+            self.load_all_models(exp_name)
+
+        update_agent_num = 0
+        done_cnt = 0
+
+        all_rewards_in_train = []
+
+        atk_dict = self.ppos[0].get_state_dict()
+        def_dict = self.ppos[1].get_state_dict()
+
+        save_model(atk_dict, 'models/atk_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
+        save_model(def_dict, 'models/def_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
+        for i_episode in range(round_each_belief // self.update_timestep):
+
+            # for num_trained in range()
+            sp_lists = []
+            for i_samplers in range(self.n_sampler):
+
+                arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+
+                sp = subprocess.Popen(arg)
+                sp_lists.append(sp)
+
+            for sp in sp_lists:
+                sp.wait()
+            
+            for i_samplers in range(self.n_sampler):
+                sampler_name = '{}_sampler_{}'.format(exp_name, i_samplers)
+                for type_i in range(self.env.n_types):
+                    self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_{}'.format(type_i, sampler_name))
+                self.def_memory.load_samples('results/def_memory_{}.pickle'.format(sampler_name))
+
+            print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
+                        
+            if update_agent_num == 1:
+                tot_loss = self.ppos[1].update(substep, self.def_memory)
+            else:
+                cntupd = 0
+                v_loss, tot_loss = 0, 0
+                for type_i in range(len(self.atk_memorys)):
+                    if len(self.atk_memorys[type_i].rewards) > 1:
+                        tot_loss_t = self.ppos[0].update(substep, self.atk_memorys[type_i], type_i)
+                        cntupd += 1
+                        # v_loss += v_loss_t
+                        tot_loss += tot_loss_t
+                # v_loss /= cntupd
+                tot_loss /= cntupd
+            # v_loss += v_loss_t
+            # tot_loss += tot_loss_t
+            save_model(atk_dict, 'models/atk_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
+            save_model(def_dict, 'models/def_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
+
+            self.def_memory.clear_memory()
+                        
+            for type_i in range(len(self.atk_memorys)):
+                self.atk_memorys[type_i].clear_memory()
+
+            # self.def_memory.clear_memory()
+            
+            # self.memorys[update_agent_num].clear_memory()
+            # for agent_i in range(self.env.n_agents):
+            #     self.memorys[agent_i].clear_memory()
+            
+            # for type_i in range(len(self.atk_memorys)):
+            #     self.atk_memorys[type_i].clear_memory()
+            # print('{}: updated. loss: {:.4f}'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), tot_loss))
+            update_agent_num = (update_agent_num + 1) % 2
+
+            # save_model()
+            
+
+            # done_cnt = 0
+        # timestep = 0
+        
         
         # print('tot v step:')
         # print(self.v_update_timestep)
@@ -810,7 +859,7 @@ class NaiveController():
         # print(os.path.exists('models'))
         save_model(atk_dict, 'models/atk_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
         save_model(def_dict, 'models/def_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
-        save_model(all_rewards_in_train, 'results/reward_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b))
+        # save_model(all_rewards_in_train, 'results/reward_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b))
     
     def sub_game_exploitability(self, single_train_round=20000, episodes_test=100, exp_name=None):
         if exp_name != None:

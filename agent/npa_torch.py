@@ -5,10 +5,21 @@ import gym
 import numpy as np
 import gc
 import math
+import pickle
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device("cpu")
 # from npa_controller_torch import device
+
+def save_model(model, f_path):
+    with open(f_path, 'wb') as f:
+        pickle.dump(model, f, pickle.HIGHEST_PROTOCOL)
+    print('model saved to {}'.format(f_path))
+
+def load_model(f_path):
+    with open(f_path, 'rb') as f:
+        model = pickle.load(f)
+    return model
 
 class Memory:
     def __init__(self):
@@ -19,6 +30,7 @@ class Memory:
         self.is_terminals = []
         self.type_obs = []
         self.next_vs = []
+        self.start_num = 0
     
     def clear_memory(self):
         del self.actions[:]
@@ -28,6 +40,7 @@ class Memory:
         del self.is_terminals[:]
         del self.type_obs[:]
         del self.next_vs[:]
+        del self.start_num
         gc.collect()
     
     def first_step(self, reward):
@@ -47,6 +60,7 @@ class Memory:
                     ret.next_vs.append(torch.zeros_like(self.rewards[i]))
                 else:
                     ret.next_vs.append(self.rewards[i + 1])
+                ret.start_num = self.start_num
             fetch = self.is_terminals[i]
         # ret.actions = self.actions[0:1]
         # ret.states = self.states[0:1]
@@ -55,6 +69,21 @@ class Memory:
         # ret.is_terminals = self.is_terminals[0:1]
 
         return ret
+    
+    def load_samples(self, name):
+        all_lists = load_model(name)
+        self.actions += all_lists[0]
+        self.states += all_lists[1]
+        self.logprobs += all_lists[2]
+        self.rewards += all_lists[3]
+        self.is_terminals += all_lists[4]
+        self.type_obs += all_lists[5]
+        self.next_vs += all_lists[6]
+        self.start_num = all_lists[7]
+
+    def save_samples(self, name):
+        save_lists = [self.actions, self.states, self.logprobs, self.rewards, self.is_terminals, self.type_obs, self.next_vs, self.start_num]
+        save_model(save_lists, name)
 
 
 class ActorCritic(nn.Module):
@@ -416,7 +445,12 @@ class NPAAgent:
         for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
+            # print('error!!!')
             # print(type(reward))
+            # print(reward)
+            # print(type(discounted_reward))
+            # print(sub_step, memory.start_num)
+
             discounted_reward = reward + (self.agents[sub_step][memory.start_num].gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
         
