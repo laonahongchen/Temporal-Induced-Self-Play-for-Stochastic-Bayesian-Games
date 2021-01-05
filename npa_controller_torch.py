@@ -64,7 +64,8 @@ class NaiveController():
         self.n_latent_var = network_width           # number of variables in hidden layer
         self.update_timestep = batch_size      # update policy every n timesteps
         self.v_update_timestep = v_batch_size
-        self.minibatch = minibatch
+        # self.minibatch = minibatch
+        self.minibatch = batch_size # pg theorem not originally satisfied so on-policy update is needed
         self.lr = lr
         self.betas = betas
         self.gamma = gamma                # discount factor
@@ -703,8 +704,8 @@ class NaiveController():
             # for num_trained in range()
             sp_lists = []
             for i_samplers in range(self.n_sampler):
-
-                arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+                # print()
+                arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep // self.n_sampler), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)
