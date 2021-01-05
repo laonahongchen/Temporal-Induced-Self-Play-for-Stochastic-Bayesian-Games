@@ -451,8 +451,8 @@ class NaiveController():
                sec_prob=False, save_every=None, save_path=None, load_state=None, load_path=None, store_results=False, subpros_name='run_tag_subp', continue_name=None):
         self.step = 0
         env = self.env
-        if num_round == None:
-            num_round = self.max_episodes
+        # if num_round == None:
+            # num_round = self.max_episodes
         
         running_reward = torch.zeros((self.env.n_targets, self.env.n_agents))
         avg_length = np.zeros((self.env.n_targets))
@@ -497,22 +497,24 @@ class NaiveController():
                 all_done = this_time_finish
                 # self.agent
 
-        while self.step < num_round:
-            self.step += 1
-            for substep in range(self.env.n_steps - 1, -1, -1):
-                print('start training substep {}.'.format(substep))
-                sp_lists = []
-                # for b in range(self.n_belief):
-                for b_batch in range(math.ceil(1. * self.n_belief / self.max_process)):
-                    b_st = b_batch * self.max_process
-                    b_ed = min((b_batch + 1) * (self.max_process), self.n_belief)
-                    train_and_fetch_subprocess(substep, b_st, b_ed)
+        # while self.step < num_round:
+            # self.step += 1
+        # for substep in range(self.env.n_steps - 1, -1, -1):
+        if True:
+            substep = num_round
+            print('start training substep {}.'.format(substep))
+            sp_lists = []
+            # for b in range(self.n_belief):
+            for b_batch in range(math.ceil(1. * self.n_belief / self.max_process)):
+                b_st = b_batch * self.max_process
+                b_ed = min((b_batch + 1) * (self.max_process), self.n_belief)
+                train_and_fetch_subprocess(substep, b_st, b_ed)
 
-                atk_dict = self.ppos[0].get_state_dict()
-                def_dict = self.ppos[1].get_state_dict()
+            atk_dict = self.ppos[0].get_state_dict()
+            def_dict = self.ppos[1].get_state_dict()
 
-                save_model(atk_dict, 'models/atk_{}.pickle'.format(exp_name))
-                save_model(def_dict, 'models/def_{}.pickle'.format(exp_name))   
+            save_model(atk_dict, 'models/atk_{}.pickle'.format(exp_name))
+            save_model(def_dict, 'models/def_{}.pickle'.format(exp_name))   
                 # for i in range():
 
                 

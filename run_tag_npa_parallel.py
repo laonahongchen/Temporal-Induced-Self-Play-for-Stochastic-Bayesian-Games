@@ -22,6 +22,7 @@ def parse_args():
 
     parser.add_argument('--agent', type=str, default="ppo")
     parser.add_argument('--episodes', type=int, default=1)
+    parser.add_argument('--num-round', type=int, default=0)
     parser.add_argument('--n-steps', type=int, default=20)
     parser.add_argument('--n-belief', type=int, default=10)
     parser.add_argument('--max-process', type=int, default=2)
@@ -107,10 +108,12 @@ if __name__ == "__main__":
 
     res = {"episode": [], "current_assessments": [], "player": []}
 
+    print('exp_name: ', args.exp_name)
+
     env = TaggingEnv(n_steps=n_steps, prior=prior)
     # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
     if train:
         controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, k_epochs=args.k_epochs,max_process=args.max_process, v_batch_size=args.v_batch_size, total_process=args.total_process, seed = args.seed)
-        controller.train_main_process(round_each_belief=max_steps, continue_name=args.exp_name)
+        controller.train_main_process(num_round=args.num_round, round_each_belief=max_steps, continue_name=args.exp_name)
 
         # controller.assess_strategy()
