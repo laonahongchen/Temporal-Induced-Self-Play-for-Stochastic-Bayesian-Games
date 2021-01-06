@@ -213,8 +213,6 @@ class PPO:
         # if rewards
         # rewards = torch.tensor(rewards).to(device)
         rewards = torch.stack(rewards).to(device)
-
-        
         
         # convert list to tensor
         old_states = torch.stack(memory.states).to(device)
@@ -222,7 +220,6 @@ class PPO:
         old_logprobs = torch.stack(memory.logprobs).to(device).detach()
         old_types = torch.stack(memory.type_obs).to(device).detach()
 
-        
         # print attacker
         # if self.action_dim > 4:
         #     print('reward:')
@@ -241,7 +238,7 @@ class PPO:
                 self.v_old_opt.zero_grad()
                 cur_value_loss.mean().backward()
                 self.v_old_opt.step()
-                tot_value_loss += cur_value_loss
+                tot_value_loss += cur_value_loss.detach()
                 cnt_opt += 1
         return tot_value_loss / cnt_opt
     
@@ -330,7 +327,7 @@ class PPO:
                 # print('cur value loss:')
                 # print(loss)
                 
-                tot_loss += loss.mean()
+                tot_loss += loss.mean().detach()
                 cnt_opt += 1
                 
                 # take gradient step
@@ -549,8 +546,8 @@ class NPAAgent:
 
         if memory != None:
             memory.states.append(observation[1 + self.n_target:])
-            memory.actions.append(action)
-            memory.logprobs.append(dist.log_prob(action))
+            memory.actions.append(action.detach())
+            memory.logprobs.append(dist.log_prob(action).detach())
         
         return action.item(), action_probs
 

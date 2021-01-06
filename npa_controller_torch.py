@@ -471,7 +471,7 @@ class NaiveController():
                     if os.path.exists('models/atk_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b)) and os.path.exists('models/def_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b)):
                         continue
 
-                    arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}".format(exp_name), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+                    arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}".format(exp_name), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
 
                     sp = subprocess.Popen(arg)
                     sp_lists.append(sp)
@@ -707,7 +707,7 @@ class NaiveController():
             sp_lists = []
             for i_samplers in range(self.n_sampler):
                 # print()
-                arg = ["python", "{}.py".format(subpros_name), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep // self.n_sampler), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep // self.n_sampler), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)
@@ -793,20 +793,21 @@ class NaiveController():
                 if t == substep:
                     start_num = b
 
-                action, _ = self.ppos[0].act(curstep, states[0], self.atk_memorys[self.env.atk_type], start_num, self.env.atk_type, in_training=(t == substep))
+                action, _ = self.ppos[0].act(curstep, states[0].detach(), self.atk_memorys[self.env.atk_type], start_num, self.env.atk_type, in_training=(t == substep))
                 actions.append(action)
-                action, _ = self.ppos[1].act(curstep, states[1], self.def_memory, start_num, in_training=(t == substep))
+                action, _ = self.ppos[1].act(curstep, states[1].detach(), self.def_memory, start_num, in_training=(t == substep))
                 actions.append(action)
                 v = []
                 if t != substep:
-                    v.append(self.ppos[0].evaluate(t, torch.stack([states[0][1:]]), actions[0], self.env.atk_type, type_ob, start_num, in_training=False)[1])
-                    v.append(self.ppos[1].evaluate(t, torch.stack([states[1][1:]]), actions[1], type_ob, start_num, in_training=False)[1])
+                    v.append(self.ppos[0].evaluate(t, torch.stack([states[0][1:]]), actions[0], self.env.atk_type, type_ob, start_num, in_training=False)[1].detach())
+                    v.append(self.ppos[1].evaluate(t, torch.stack([states[1][1:]]), actions[1], type_ob, start_num, in_training=False)[1].detach())
                     done=True
                     reward = torch.Tensor(v)
                 else:
-
-                    atk_prob = torch.stack([self.ppos[0].evaluate(t, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), start_num, in_training=True)[3] for tar in range(self.env.n_targets)])
+                    atk_prob = torch.stack([self.ppos[0].evaluate(t, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), start_num, in_training=True)[3].detach() for tar in range(self.env.n_targets)])
                     states, reward, done, _ = self.env.step(actions, atk_prob)
+                    # states = states.detach()
+                    # states = [states[0]]
                     reward = torch.Tensor(reward)
 
                 # if not done and t != substep:
@@ -832,7 +833,7 @@ class NaiveController():
 
                 if done:
                     done_cnt += 1
-                    if done_cnt % self.v_update_timestep == 0 or i_episode == round_each_belief - 1:
+                    if done_cnt % self.v_update_timestep == 0:
                         print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
                         
                         if update_agent_num == 1:
