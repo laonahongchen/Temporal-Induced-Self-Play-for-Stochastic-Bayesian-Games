@@ -104,19 +104,6 @@ class ActorCritic(nn.Module):
                 nn.Softmax(dim=-1)
                 )
         
-        # critic
-        self.value_layer = nn.Sequential(
-                nn.Linear(state_dim, n_latent_var),
-                nn.Tanh(),
-                # nn.ReLU(),
-                nn.Linear(n_latent_var, n_latent_var),
-                # nn.ReLU(),
-                nn.Tanh(),
-                # nn.Linear(n_latent_var, n_latent_var),
-                # nn.Tanh(),
-                nn.Linear(n_latent_var, 1)
-                )
-        
     def act(self, state, memory):
         if type(state) != torch.Tensor:
             state = torch.from_numpy(state).float().to(device) 
@@ -164,11 +151,88 @@ class ActorCritic(nn.Module):
         dist_entropy = dist.entropy()
 
         # state_value = self.value_layer(state)
+        return action_probs, torch.Tensor(0), action_logprobs, dist_entropy # action_logprobs, torch.squeeze(state_value), dist_entropy, action_prob
+    
+class AvrgActorCritic():
+    def __init__(self, max_n_hist, state_dim, action_dim, n_latent_var, type_dim = 0):
+        self.nns = []
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.n_latent_var = n_latent_var
+        self.type_dim = type_dim
+        self.cur_n2add = 0
+        self.max_n_hist = max_n_hist
+
+        # critic
+        self.value_layer = nn.Sequential(
+            nn.Linear(state_dim, n_latent_var),
+            nn.Tanh(),
+            # nn.ReLU(),
+            nn.Linear(n_latent_var, n_latent_var),
+            # nn.ReLU(),
+            nn.Tanh(),
+            # nn.Linear(n_latent_var, n_latent_var),
+            # nn.Tanh(),
+            nn.Linear(n_latent_var, 1)
+            )
+    
+    def add_to_hists(self, state_dict):
+        if self.cur_n2add == len(self.nns):
+            new_pol = ActorCritic(self.state_dim, self.action_dim, self.n_latent_var, self.type_dim).to(device)
+            new_pol.load_state_dict(state_dict)
+            self.nns.append(new_pol)
+        else:
+            self.nns[self.cur_n2add].load_state_dict(state_dict)
+        self.cur_n2add = (self.cur_n2add + 1) % self.max_n_hist
+    
+    def act(self, state, memory):
+        totl = len(self.nns)
+        ret = None
+        for i in range(totl):
+            if i == 0:
+                ret = self.nns[i].act(state, memory)
+            else:
+                ret = torch.add(ret, self.nns[i].act(state, memory))
+        ret = ret / totl
+        return ret
+    
+    def evaluate(self, state, action, typeob):
+        totl = len(self.nns)
+        ret = None
+        for i in range(totl):
+            if i == 0:
+                ret0, _, ret1, ret2 = self.nns[i].evaluate(state, action, typeob)
+            else:
+                ret0_, _, ret1_, ret2_ = self.nns[i].evaluate(state, action, typeob)
+                ret0 = torch.add(ret0, ret0_)
+                ret1 = torch.add(ret1, ret1_)
+                ret2 = torch.add(ret2, ret2_)
+                # ret3 = torch.add(ret3, ret3_)
+
+        ret0 = ret0 / totl
+        ret1 = ret1 / totl
+        ret2 = ret2 / totl
+        # ret3 = ret3 / totl
+        value_state = torch.cat([state], dim=1)
         state_value = self.value_layer(value_state)
-        return action_probs, torch.squeeze(state_value), action_logprobs, dist_entropy # action_logprobs, torch.squeeze(state_value), dist_entropy, action_prob
+        return ret0, torch.squeeze(state_value), ret1, ret2
+    
+    def state_dict(self):
+        ret = []
+        
+        for i in range(len(self.nns)):
+            ret.append(self.nns[i].state_dict())
+        return [ret, self.value_layer.state_dict()]
+    
+    def load_state_dict(self, sdb):
+        nns_sdb, value_sdb = sdb
+        for i in range(len(self.nns)):
+            self.nns[i].load_state_dict(nns_sdb[i])
+        self.value_layer.load_state_dict(value_sdb)
+        # return ret
         
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, value_lr=5e-2, entcoeff_decay = 1.):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, value_lr=5e-2, entcoeff_decay = 1., max_n_hist = 10):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -176,13 +240,16 @@ class PPO:
         self.K_epochs = K_epochs
         self.minibatch = minibatch
         self.action_dim = action_dim
+        self.max_n_hist = max_n_hist
         
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var, type_dim).to(device)
         self.optimizer = torch.optim.Adam(self.policy.action_layer.parameters(), lr=lr)
-        self.v_optimizer = torch.optim.Adam(self.policy.value_layer.parameters(), lr = value_lr)
+        # self.v_optimizer = torch.optim.Adam(self.policy.value_layer.parameters(), lr = value_lr)
         # self.optimizer = torch.optim.RMSprop(self.policy.parameters(), lr=lr)
-        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, type_dim).to(device)
-        self.policy_old.load_state_dict(self.policy.state_dict())
+        # self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var, type_dim).to(device)
+        # self.policy_old.load_state_dict(self.policy.state_dict())
+        self.policy_old = AvrgActorCritic(max_n_hist, state_dim, action_dim, n_latent_var, type_dim)
+        self.policy_old.add_to_hists(self.policy.state_dict())
         self.v_old_opt = torch.optim.Adam(self.policy_old.value_layer.parameters(), lr=value_lr)
         # self.valuecoeff = valuecoeff
         self.value_lr = value_lr
@@ -337,12 +404,13 @@ class PPO:
 
         # Copy new weights into old policy:
         # self.policy_old.load_state_dict(self.policy.state_dict())
-        sdb = self.policy_old.state_dict()
-        sda = self.policy.state_dict()
-        for key in sda:
-            sdb[key] = (sdb[key] * self.policy_old_weight + sda[key]) / (self.policy_old_weight + 1.)
-        self.policy_old_weight += 1
-        self.policy_old.load_state_dict(sdb)
+        # sdb = self.policy_old.state_dict()
+        # sda = self.policy.state_dict()
+        # for key in sda:
+        #     sdb[key] = (sdb[key] * self.policy_old_weight + sda[key]) / (self.policy_old_weight + 1.)
+        # self.policy_old_weight += 1
+        # self.policy_old.load_state_dict(sdb)
+        self.policy_old.add_to_hists(self.policy.state_dict())
         return tot_loss / cnt_opt
 
 def calc_dis(a, b):

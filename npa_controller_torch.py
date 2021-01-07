@@ -648,6 +648,11 @@ class NaiveController():
                     v.append(self.ppos[1].evaluate(t, torch.stack([states[1][1:]]), actions[1], type_ob, start_num, in_training=False)[1])
                     done = True
                     reward = torch.Tensor(v)
+
+                    # self.def_memory.states.append(observation[1 + self.n_target:])
+                    # self.def_memory.actions.append(action.detach())
+                    # self.def_memory.logprobs.append(dist.log_prob(action).detach())
+
                     # print(reward)
                 else:
 
