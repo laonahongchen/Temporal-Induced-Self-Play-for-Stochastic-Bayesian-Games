@@ -402,6 +402,8 @@ class PPO:
                 loss.mean().backward()
                 self.optimizer.step()
 
+                break
+
         # Copy new weights into old policy:
         # self.policy_old.load_state_dict(self.policy.state_dict())
         # sdb = self.policy_old.state_dict()

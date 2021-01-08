@@ -685,7 +685,7 @@ class NaiveController():
         # sampler_name = exp_name + '_sampler'
         self.def_memory.save_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, exp_name))
         for type_i in range(self.env.n_types):
-            self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}'.format(type_i, substep, b, exp_name))
+            self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}.pickle'.format(type_i, substep, b, exp_name))
                 
                         
 
@@ -712,7 +712,7 @@ class NaiveController():
             sp_lists = []
             for i_samplers in range(self.n_sampler):
                 # print()
-                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep // self.n_sampler), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)
@@ -723,7 +723,7 @@ class NaiveController():
             for i_samplers in range(self.n_sampler):
                 sampler_name = '{}_sampler_{}'.format(exp_name, i_samplers)
                 for type_i in range(self.env.n_types):
-                    self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}'.format(type_i, substep, b, sampler_name))
+                    self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}.pickle'.format(type_i, substep, b, sampler_name))
                 self.def_memory.load_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
 
             print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
