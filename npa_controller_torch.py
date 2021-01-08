@@ -76,7 +76,7 @@ class NaiveController():
         self.max_process = max_process
         self.total_process = total_process
         self.n_sampler = 4
-        self.thread_each_process = self.total_process // (self.max_process * self.n_sampler)
+        self.thread_each_process = min(10, self.total_process // (self.max_process * self.n_sampler)) # some string process is wrong when there are more samplers than 10
         
         #############################################
 
