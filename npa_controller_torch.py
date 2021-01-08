@@ -575,7 +575,7 @@ class NaiveController():
         print(def_values)
 
     # sample the samples for train_belief
-    def sample_belief(self, substep, b, n_samples, exp_name):
+    def sample_belief(self, substep, b, n_samples, exp_name, update_agent_num):
         # while the input exp_name has the sampler number in it, we need to remove it to get the current model
         true_exp_name = exp_name[:-10]
         # print('true_exp_name:')
@@ -594,7 +594,7 @@ class NaiveController():
 
         # 
 
-        update_agent_num = 0
+        # update_agent_num = 0
         done_cnt = 0
 
         all_rewards_in_train = []
@@ -712,7 +712,7 @@ class NaiveController():
             sp_lists = []
             for i_samplers in range(self.n_sampler):
                 # print()
-                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)
