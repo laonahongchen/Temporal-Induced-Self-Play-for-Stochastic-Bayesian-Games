@@ -48,7 +48,7 @@ def load_model(f_path):
     return model
 
 class NaiveController():
-    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, k_epochs=1000, max_process=3, v_batch_size=100000, total_process=64,seed=None):
+    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, k_epochs=1000, max_process=3, v_batch_size=100000, total_process=64,seed=None, n_avrg_p=10):
     ############## Hyperparameters ##############
         # env_name = "LunarLander-v2"
         # creating environment
@@ -77,6 +77,7 @@ class NaiveController():
         self.total_process = total_process
         self.n_sampler = 4
         self.thread_each_process = min(10, self.total_process // (self.max_process * self.n_sampler)) # some string process is wrong when there are more samplers than 10
+        self.n_avrg_p = n_avrg_p
         
         #############################################
 
@@ -122,9 +123,9 @@ class NaiveController():
             state_dim = self.env.observation_spaces[i].shape[0]
             action_dim = self.env.action_spaces[i].n
             if i != 0:
-                ppo = NPAAgent(self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets)
+                ppo = NPAAgent(self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets, self.n_avrg_p)
             else:
-                ppo = AtkNPAAgent(self.env.n_types, self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets)
+                ppo = AtkNPAAgent(self.env.n_types, self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets, self.n_avrg_p)
                 # curmemory.append(memory)
                 # curppo.append(ppo)
             # self.memorys.append(memory)

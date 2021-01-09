@@ -43,6 +43,7 @@ def parse_args():
     parser.add_argument('--exp-name', type=str)
     parser.add_argument('--other', type=str, default='')
     parser.add_argument('--seed', type=int, default=377)
+    parser.add_argument('--n-avrg-p', type=int, default=10)
 
     return parser.parse_args()
 
@@ -106,7 +107,7 @@ if __name__ == "__main__":
     env = TaggingEnv(n_steps=n_steps, prior=prior)
     # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
     if train:
-        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, args.seed)
+        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, args.seed, n_avrg_p = args.n_avrg_p)
         # controller.train(round_each_belief=max_steps)
 
         controller.test_env_input(args.exp_name)
