@@ -503,6 +503,9 @@ class NaiveController():
         if True:
             substep = num_round
             print('start training substep {}.'.format(substep))
+
+            if substep != self.env.n_steps - 1:
+                self.load_all_models(exp_name)
             sp_lists = []
             # for b in range(self.n_belief):
             for b_batch in range(math.ceil(1. * self.n_belief / self.max_process)):
