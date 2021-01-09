@@ -48,7 +48,7 @@ def load_model(f_path):
     return model
 
 class NaiveController():
-    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, k_epochs=1000, max_process=3, v_batch_size=100000, total_process=64,seed=None, n_avrg_p=10):
+    def __init__(self, env: BaseEnv, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, batch_size, minibatch, k_epochs=1000, max_process=3, v_batch_size=100000, total_process=64,seed=None, n_sampler = 5, n_avrg_p=10):
     ############## Hyperparameters ##############
         # env_name = "LunarLander-v2"
         # creating environment
@@ -75,8 +75,8 @@ class NaiveController():
         self.n_belief = n_belief
         self.max_process = max_process
         self.total_process = total_process
-        self.n_sampler = 4
-        self.thread_each_process = min(10, self.total_process // (self.max_process * self.n_sampler)) # some string process is wrong when there are more samplers than 10
+        self.n_sampler = n_sampler # some string process is implemented in a naive way, it will go wrong when there are more samplers than 10
+        self.thread_each_process = self.total_process // (self.max_process * self.n_sampler)
         self.n_avrg_p = n_avrg_p
         
         #############################################
@@ -472,7 +472,7 @@ class NaiveController():
                     if os.path.exists('models/atk_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b)) and os.path.exists('models/def_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b)):
                         continue
 
-                    arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}".format(exp_name), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process)]
+                    arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}".format(exp_name), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(round_each_belief), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--n-sampler={}".format(self.n_sampler), "--n-avrg-p={}".format(self.n_avrg_p)]
 
                     sp = subprocess.Popen(arg)
                     sp_lists.append(sp)
@@ -716,7 +716,7 @@ class NaiveController():
             sp_lists = []
             for i_samplers in range(self.n_sampler):
                 # print()
-                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num)]
+                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num), "--n-sampler={}".format(self.n_sampler), "--n-avrg-p={}".format(self.n_avrg_p)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)

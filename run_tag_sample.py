@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument('--total-process', type=int, default=64)
     parser.add_argument('--update-agent-num', type=int, default=0)
     parser.add_argument('--n-avrg-p', type=int, default=10)
+    parser.add_argument('--n-sampler', type=int, default=5)
 
     return parser.parse_args()
 
@@ -115,7 +116,7 @@ if __name__ == "__main__":
     env = TaggingEnv(n_steps=n_steps, prior=prior)
     # env.export_payoff("/home/footoredo/playground/REPEATED_GAME/EXPERIMENTS/PAYOFFSATTvsDEF/%dTarget/inputr-1.000000.csv" % n_slots)
     if train:
-        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, k_epochs=args.k_epochs,max_process=args.max_process, v_batch_size=args.v_batch_size, total_process=args.total_process, seed = args.seed, n_avrg_p = args.n_avrg_p)
+        controller = NaiveController(env, max_episodes, lr, betas, gamma, clip_eps, n_steps, network_width, test_every, n_belief, args.batch_size, args.minibatch, k_epochs=args.k_epochs,max_process=args.max_process, v_batch_size=args.v_batch_size, total_process=args.total_process, seed = args.seed, n_sampler=args.n_sampler, n_avrg_p = args.n_avrg_p)
         controller.sample_belief(args.train_round, args.train_belief, max_steps, args.exp_name, args.update_agent_num)
 
         # controller.assess_strategy()
