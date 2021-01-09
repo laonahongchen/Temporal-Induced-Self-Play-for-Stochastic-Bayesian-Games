@@ -123,9 +123,9 @@ class NaiveController():
             state_dim = self.env.observation_spaces[i].shape[0]
             action_dim = self.env.action_spaces[i].n
             if i != 0:
-                ppo = NPAAgent(self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets, self.n_avrg_p)
+                ppo = NPAAgent(self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets, max_n_hist=self.n_avrg_p)
             else:
-                ppo = AtkNPAAgent(self.env.n_types, self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets, self.n_avrg_p)
+                ppo = AtkNPAAgent(self.env.n_types, self.env.n_steps, self.n_belief, self.beliefs, state_dim, action_dim, self.n_latent_var, lr, betas[i], gamma, self.K_epochs, self.eps_clip, self.minibatch, self.env.n_targets, max_n_hist=self.n_avrg_p)
                 # curmemory.append(memory)
                 # curppo.append(ppo)
             # self.memorys.append(memory)
