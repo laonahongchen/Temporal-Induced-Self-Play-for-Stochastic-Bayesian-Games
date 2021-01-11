@@ -26,7 +26,7 @@ from agent.npa_torch import device
 
 import subprocess
 import math
-import pickle
+import pickle5 as pickle
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
@@ -716,7 +716,7 @@ class NaiveController():
             sp_lists = []
             for i_samplers in range(self.n_sampler):
                 # print()
-                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num), "--n-sampler={}".format(self.n_sampler), "--n-avrg-p={}".format(self.n_avrg_p)]
+                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed + i_samplers), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num), "--n-sampler={}".format(self.n_sampler), "--n-avrg-p={}".format(self.n_avrg_p)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)
