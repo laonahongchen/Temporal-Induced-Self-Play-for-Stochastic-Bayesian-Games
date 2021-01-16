@@ -617,10 +617,14 @@ class NaiveController():
                 if update_agent_num == 0:
                     states, _, _ = self.env.sub_reset(substep, self.atk_prior)
                 else:
+                    # if b == 0:
+                        # print('now updating defender', self.beliefs[substep][b])
                     states, _, _ = self.env.sub_reset(substep, self.beliefs[substep][b])
             else:
                 states, _, _ = self.env.reset()
 
+            if b == 0 and update_agent_num == 1 and self.env.atk_type == 0:
+                print(self.beliefs[substep][b], self.env.atk_type)
             # curreward = torch.zeros((self.env.n_agents))
             type_ob = np.zeros((1, self.env.n_targets))
             type_ob[0, self.env.atk_type] = 1.
@@ -685,18 +689,40 @@ class NaiveController():
 
                 if done:
                     break
+        
+        if update_agent_num == 1:
+            # tot_loss = self.ppos[1].update(substep, self.def_memory)
+            self.ppos[1].update(substep, self.def_memory)
+            def_all_grads = self.ppos[1].get_all_grads(substep, b)
+            save_model(def_all_grads, 'results/grad_round_{}_belief_{}_{}.pickle'.format(substep, b, exp_name))
+        else:
+            cntupd = 0
+            v_loss, tot_loss = 0, 0
+            for type_i in range(len(self.atk_memorys)):
+                if len(self.atk_memorys[type_i].rewards) > 1:
+                    # tot_loss_t = self.ppos[0].update(substep, self.atk_memorys[type_i], type_i)
+                    self.ppos[0].update(substep, self.atk_memorys[type_i], type_i)
+                    # cntupd += 1
+                    # v_loss += v_loss_t
+                    # tot_loss += tot_loss_t
+            # v_loss /= cntupd
+            # tot_loss /= cntupd
+            atk_all_grads = self.ppos[0].get_all_grads(substep, b)
+            save_model(atk_all_grads, 'results/grad_round_{}_belief_{}_{}.pickle'.format(substep, b, exp_name))
                 
         # sampler_name = exp_name + '_sampler'
-        self.def_memory.save_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, exp_name))
-        for type_i in range(self.env.n_types):
-            self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}.pickle'.format(type_i, substep, b, exp_name))
-                
+        # self.def_memory.save_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, exp_name))
+        # for type_i in range(self.env.n_types):
+        #     self.atk_memorys[type_i].save_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}.pickle'.format(type_i, substep, b, exp_name))
+        
                         
 
     # train the <b> th belief of round <substep> for <round_each_belief> time
     def train_belief(self, substep, b, round_each_belief, exp_name, subpros_name='run_tag_sample'):
         if substep != self.env.n_steps - 1:
             self.load_all_models(exp_name)
+        # else:
+            # round_each_belief = 0
 
         update_agent_num = 0
         done_cnt = 0
@@ -716,7 +742,7 @@ class NaiveController():
             sp_lists = []
             for i_samplers in range(self.n_sampler):
                 # print()
-                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep // self.n_sampler), "--seed={}".format(self.random_seed + i_samplers), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num), "--n-sampler={}".format(self.n_sampler), "--n-avrg-p={}".format(self.n_avrg_p)]
+                arg = ["python", "{}.py".format(subpros_name), "--n-belief={}".format(self.n_belief), "--n-steps={:d}".format(self.env.n_steps), "--learning-rate={}".format(self.lr), "--exp-name={}_sampler_{}".format(exp_name, i_samplers), "--train-round={}".format(substep), "--train-belief={}".format(b), "--batch-size={}".format(self.update_timestep), "--minibatch={}".format(self.minibatch), "--max-steps={}".format(self.update_timestep), "--seed={}".format(self.random_seed + i_samplers), "--k-epochs={}".format(self.K_epochs), "--v-batch-size={}".format(self.v_update_timestep), "--num-thread={}".format(self.thread_each_process), "--update-agent-num={}".format(update_agent_num), "--n-sampler={}".format(self.n_sampler), "--n-avrg-p={}".format(self.n_avrg_p)]
 
                 sp = subprocess.Popen(arg)
                 sp_lists.append(sp)
@@ -724,36 +750,38 @@ class NaiveController():
             for sp in sp_lists:
                 sp.wait()
             
+            self.ppos[0].all_zero_grad()
+            self.ppos[1].all_zero_grad()
             for i_samplers in range(self.n_sampler):
                 sampler_name = '{}_sampler_{}'.format(exp_name, i_samplers)
-                for type_i in range(self.env.n_types):
-                    self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}.pickle'.format(type_i, substep, b, sampler_name))
-                self.def_memory.load_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
+                # for type_i in range(self.env.n_types):
+                    # self.atk_memorys[type_i].load_samples('results/atk_memory_type_{}_round_{}_belief_{}_{}.pickle'.format(type_i, substep, b, sampler_name))
+                if update_agent_num == 1: 
+                    def_grad_d_sampler_i = load_model('results/grad_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
+                    self.ppos[1].load_all_grads(def_grad_d_sampler_i, substep, b)
+                    # print('defender:', def_grad_d_sampler_i)
+                else:
+                    # print(i_samplers, 'load grad finish!')
+                    atk_grad_d_sampler_i = load_model('results/grad_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
+                    self.ppos[0].load_all_grads(atk_grad_d_sampler_i, substep, b)
+                    # print('atk:', atk_grad_d_sampler_i)
+                # print(i_samplers, 'load grad finish!')
+                # self.def_memory.load_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
+            self.ppos[0].do_optimize()
+            self.ppos[1].do_optimize()
 
-            print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
+            # print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
                         
-            if update_agent_num == 1:
-                tot_loss = self.ppos[1].update(substep, self.def_memory)
-            else:
-                cntupd = 0
-                v_loss, tot_loss = 0, 0
-                for type_i in range(len(self.atk_memorys)):
-                    if len(self.atk_memorys[type_i].rewards) > 1:
-                        tot_loss_t = self.ppos[0].update(substep, self.atk_memorys[type_i], type_i)
-                        cntupd += 1
-                        # v_loss += v_loss_t
-                        tot_loss += tot_loss_t
-                # v_loss /= cntupd
-                tot_loss /= cntupd
+            
             # v_loss += v_loss_t
             # tot_loss += tot_loss_t
             save_model(atk_dict, 'models/atk_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
             save_model(def_dict, 'models/def_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
 
-            self.def_memory.clear_memory()
+            # self.def_memory.clear_memory()
                         
-            for type_i in range(len(self.atk_memorys)):
-                self.atk_memorys[type_i].clear_memory()
+            # for type_i in range(len(self.atk_memorys)):
+            #     self.atk_memorys[type_i].clear_memory()
 
             # self.def_memory.clear_memory()
             
@@ -763,7 +791,7 @@ class NaiveController():
             
             # for type_i in range(len(self.atk_memorys)):
             #     self.atk_memorys[type_i].clear_memory()
-            print('{}: updated. loss: {:.4f}'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), tot_loss))
+            # print('{}: updated. loss: {:.4f}'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), tot_loss))
             expected_finish_time = starting_time + (datetime.now() - starting_time) * (round_each_belief // self.update_timestep) / (i_episode + 1)
             print('Trained {}\%. Expected policy training finish time: {}'.format((i_episode + 1) *100 / (round_each_belief // self.update_timestep), expected_finish_time.strftime("%m/%d/%Y, %H:%M:%S")))
             update_agent_num = (update_agent_num + 1) % 2
@@ -1011,66 +1039,75 @@ class NaiveController():
             for def_a in range(4):
                 for atk_a_2 in range(4):
                     for def_a_2 in range(4):
-                        atk_rews = [0 for _ in range(self.env.n_types)]
-                        def_rews = [0 for _ in range(self.env.n_types)]
-                        type_cnt = [0 for _ in range(self.env.n_types)]
-                        for i in range(episodes_test):
-                            cur_round = 0
-                            # states, _, _ = self.env.reset()
-                            print('new episode:')
-                            states, _, _ = self.env.reset_to_state((np.array([0, 4]), np.array([1, 4])), torch.Tensor(self.env.prior))
-                            # states, _, _ = self.env.sub_reset(0, self.env.prior)
-                            cur_type = self.env.atk_type
-                            done = False
-                            atk_rew = 0
-                            def_rew = 0
-                            rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
-                            is_first_round=True
-                            is_second_round=True
-                            need_get_type=False
-                            while not done:
-                                pre_rnns = []
-                                pre_rnns.append(rnn_historys[0])
-                                pre_rnns.append(rnn_historys[1])
+                        
+                        best_atk_rew = -np.inf
 
-                                # atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
-                                
-                                if is_first_round:
-                                    actions = [atk_a, def_a]
-                                    is_first_round = False
-                                elif is_second_round:
-                                    actions = [atk_a_2, def_a_2]
-                                    is_second_round = False
-                                    need_get_type=True
-                                else:
-                                    atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
-                                    def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
-                                    # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
-                                    actions = [atk_action, def_action]
-                                atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), -1, in_training=False)[3] for tar in range(self.env.n_targets)])
-                                
-                                states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
+                        for atk_a_3 in range(4):
+                            cur_def_rew = 0
 
-                                if need_get_type:
-                                    poss, belief = self.env.get_current_state()
-                                    states, _, _ = self.env.reset_to_state(poss, belief)
+                            for def_a_3 in range(5):
+                                atk_rews = [0 for _ in range(self.env.n_types)]
+                                def_rews = [0 for _ in range(self.env.n_types)]
+                                type_cnt = [0 for _ in range(self.env.n_types)]
+
+                                for i in range(episodes_test):
+                                    cur_round = 0
+                                    # states, _, _ = self.env.reset()
+                                    print('new episode:')
+                                    states, _, _ = self.env.reset_to_state((np.array([0, 4]), np.array([1, 4])), torch.Tensor(self.env.prior))
+                                    # states, _, _ = self.env.sub_reset(0, self.env.prior)
                                     cur_type = self.env.atk_type
-                                    type_cnt[cur_type] += 1
-                                    need_get_type = False
-                                # print('atk_strategy:')
-                                # # print(atk_strategy)
-                                # for type_i in range(self.env.n_types):
-                                #     _,  atk_t_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=type_i)
-                                #     print(atk_t_strategy)
-                                # print('def_strategy:')
-                                # print(def_strategy)
+                                    done = False
+                                    atk_rew = 0
+                                    def_rew = 0
+                                    rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
+                                    is_first_round=True
+                                    is_second_round=True
+                                    need_get_type=False
+                                    while not done:
+                                        pre_rnns = []
+                                        pre_rnns.append(rnn_historys[0])
+                                        pre_rnns.append(rnn_historys[1])
 
-                                atk_rew += rew[0]
-                                def_rew += rew[1]
+                                        # atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
+                                        
+                                        if is_first_round:
+                                            actions = [atk_a, def_a]
+                                            is_first_round = False
+                                        elif is_second_round:
+                                            actions = [atk_a_2, def_a_2]
+                                            is_second_round = False
+                                            need_get_type=True
+                                        else:
+                                            atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
+                                            def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+                                            # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
+                                            actions = [atk_action, def_action]
+                                        atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), -1, in_training=False)[3] for tar in range(self.env.n_targets)])
+                                        
+                                        states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
 
-                                cur_round += 1
-                            atk_rews[cur_type] += atk_rew
-                            def_rews[cur_type] += def_rew
+                                        if need_get_type:
+                                            poss, belief = self.env.get_current_state()
+                                            states, _, _ = self.env.reset_to_state(poss, belief)
+                                            cur_type = self.env.atk_type
+                                            type_cnt[cur_type] += 1
+                                            need_get_type = False
+                                        # print('atk_strategy:')
+                                        # # print(atk_strategy)
+                                        # for type_i in range(self.env.n_types):
+                                        #     _,  atk_t_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=type_i)
+                                        #     print(atk_t_strategy)
+                                        # print('def_strategy:')
+                                        # print(def_strategy)
+
+                                        atk_rew += rew[0]
+                                        def_rew += rew[1]
+
+                                        cur_round += 1
+                                    atk_rews[cur_type] += atk_rew
+                                    def_rews[cur_type] += def_rew
+
                         full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
                         if type_cnt[0] > 0:
                             full_atks[0].append(atk_rews[0] / type_cnt[0])
