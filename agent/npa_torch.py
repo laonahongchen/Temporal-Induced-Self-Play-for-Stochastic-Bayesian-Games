@@ -232,7 +232,7 @@ class AvrgActorCritic():
         # return ret
         
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, value_lr=5e-2, entcoeff_decay = 1., max_n_hist = 10):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, value_lr=5e-2, entcoeff_decay = 0.99, max_n_hist = 10):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -602,7 +602,7 @@ class NPAAgent:
         
         # special mask for tag in tagging game
         # print('shape of action probs:')
-        # print(action_probs.shape)
+        # print(action_probs)
         if action_probs.shape[0] > 4 and observation[-3] < 0.5:
             action_probs[-1] = 0
         

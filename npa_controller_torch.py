@@ -26,7 +26,8 @@ from agent.npa_torch import device
 
 import subprocess
 import math
-import pickle5 as pickle
+
+import pickle
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
