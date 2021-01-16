@@ -72,6 +72,12 @@ class Memory:
     
     def load_samples(self, name):
         all_lists = load_model(name)
+        # print('loading sample:')
+        # print('loading sample:', all_lists[0])
+        # for i in range(7):
+            # print(i)
+            # print(i, all_lists[i][:10])
+        # print()
         self.actions += all_lists[0]
         self.states += all_lists[1]
         self.logprobs += all_lists[2]
@@ -266,6 +272,27 @@ class PPO:
     def set_state_dict(self, sdb):
         self.policy_old.load_state_dict(sdb)
     
+    def get_all_grads(self):
+        grad_d = {x[0]:x[1].grad for x in self.policy.named_parameters()}
+        # print(x[0], x[1].data.grad)
+        return grad_d
+    
+    def load_all_grads(self, grad_d):
+        for x in self.policy.named_parameters():
+            if x[1].data.grad != None:
+                print(type(x[1].data.grad))
+                x[1].data.grad += grad_d[x[0]]
+            else:
+                x[1].data.grad = grad_d[x[0]]
+    
+    def all_zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def do_optimize(self):
+        self.optimizer.step()
+        self.policy_old.add_to_hists(self.policy.state_dict())
+        # return tot_loss / cnt_opt
+
     def v_update(self, memory, do_normalize=False):
         rewards = []
         discounted_reward = 0
@@ -350,6 +377,11 @@ class PPO:
         # print('reward:')
         # print(rewards[:20])
         # print(old_types[old_actions > 3][:20])
+        
+        # if self.action_dim > 4:
+        #     print('reward:')
+        #     print(rewards[old_actions > 3][:20])
+        #     print(old_states[old_actions > 3][:20])
 
         # print('reward shape')
         # print(rewards.shape[0])
@@ -377,30 +409,36 @@ class PPO:
 
                 _, _, logprobs, dist_entropy = self.policy.evaluate(old_states[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch], old_actions[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch], old_types[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch])
                 # Finding the ratio (pi_theta / pi_theta__old):
-                ratios = torch.exp(logprobs - old_logprobs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach())
+                # ratios = torch.exp(logprobs - old_logprobs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach())
 
-                surr1 = ratios * cur_adv
-                surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * cur_adv
+                # surr1 = ratios * cur_adv
+                # surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * cur_adv
 
                 # cur_value_loss = self.MseLoss(state_values, rewards[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach())
 
                 # loss = -torch.min(surr1, surr2) - self.entcoeff*dist_entropy
                 loss = logprobs * cur_adv.detach() + old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
+                # loss = old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
                 loss = -loss- self.entcoeff*dist_entropy
-
+                # loss = -loss
+                # print(loss)
 
                 self.entcoeff *= self.entcoeff_decay
 
-                # print('cur value loss:')
-                # print(loss)
                 
-                tot_loss += loss.mean().detach()
-                cnt_opt += 1
+                
+                # tot_loss += loss.mean().detach()
+                # cnt_opt += 1
                 
                 # take gradient step
                 self.optimizer.zero_grad()
                 loss.mean().backward()
-                self.optimizer.step()
+                # print('cur value loss:')
+                # print(loss.mean())
+                # print('cur value loss:', loss.mean(), self.policy.action_layer[0].weight.grad)
+                # grad_d = {x[0]:x[1].grad for x in self.policy.named_parameters()}
+                # print(grad_d)
+                # self.optimizer.step()
 
                 break
 
@@ -412,8 +450,7 @@ class PPO:
         #     sdb[key] = (sdb[key] * self.policy_old_weight + sda[key]) / (self.policy_old_weight + 1.)
         # self.policy_old_weight += 1
         # self.policy_old.load_state_dict(sdb)
-        self.policy_old.add_to_hists(self.policy.state_dict())
-        return tot_loss / cnt_opt
+        
 
 def calc_dis(a, b):
     # print('prepare to calcu dis:')
@@ -481,6 +518,40 @@ class NPAAgent:
             for j in range(self.n_belief):
                 # print(i, j, type(cur_dict[j]))
                 self.agents[i][j].set_state_dict(cur_dict[j])
+    
+    def get_all_grads(self, substep, b):
+        return self.agents[substep][b].get_all_grads()
+        # ret = []
+        # for i in range(self.n_step):
+        #     tmp_ret = []
+        #     for j in range(self.n_belief):
+        #         tmp_ret.append(self.agents[i][j].get_all_grads())
+        #     ret.append(tmp_ret)
+        
+        # return ret
+    
+    def load_all_grads(self, grad_d, substep, b):
+        self.agents[substep][b].load_all_grads(grad_d)
+        # for i in range(-self.n_step, 0):
+        #     # print(i)
+        #     cur_dict = grad_d[i]
+        #     # print(cur_dict)
+        #     for j in range(self.n_belief):
+        #         # print(i, j, type(cur_dict[j]))
+        #         # print(i, j)
+        #         # print(j)
+        #         # print(type(cur_dict[j]))
+        #         self.agents[i][j].load_all_grads(cur_dict[j])
+    
+    def do_optimize(self):
+        for i in range(-self.n_step, 0):
+            for j in range(self.n_belief):
+                self.agents[i][j].do_optimize()
+    
+    def all_zero_grad(self):
+        for i in range(-self.n_step, 0):
+            for j in range(self.n_belief):
+                self.agents[i][j].all_zero_grad()
 
     def load_model_with_specify(self, step, b, s_dict):
         self.agents[step][b].set_state_dict(s_dict[step][b])
@@ -526,9 +597,10 @@ class NPAAgent:
         # print(rewards)
         update_memory = memory.first_step(discounted_reward)
 
-        ret = self.agents[sub_step][memory.start_num].update(memory.first_step(discounted_reward), False)
+        # ret = self.agents[sub_step][memory.start_num].update(memory.first_step(discounted_reward), False)
+        self.agents[sub_step][memory.start_num].update(memory.first_step(discounted_reward), False)
         update_memory.clear_memory()
-        return ret
+        # return ret
     
     def get_w(self, step, ob):
         totd = 0
@@ -686,12 +758,31 @@ class AtkNPAAgent:
         for i in range(self.n_type):
             self.agents[i].set_state_dict(s_dict[i])
     
+    def get_all_grads(self, substep, b):
+        ret = []
+        for i in range(self.n_type):
+            ret.append(self.agents[i].get_all_grads(substep, b))
+        return ret
+    
+    def load_all_grads(self, grad_d, substep, b):
+        for i in range(self.n_type):
+            self.agents[i].load_all_grads(grad_d[i], substep, b)
+    
+    def do_optimize(self):
+        for i in range(self.n_type):
+            self.agents[i].do_optimize()
+    
+    def all_zero_grad(self):
+        for i in range(self.n_type):
+            self.agents[i].all_zero_grad()
+    
     def load_model_with_specify(self, step, belief, s_dict):
         for i in range(self.n_type):
             self.agents[i].load_model_with_specify(step, belief, s_dict[i])
     
     def update(self, sub_step, memory, type_n):
-        return self.agents[type_n].update(sub_step, memory)
+        # return self.agents[type_n].update(sub_step, memory)
+        self.agents[type_n].update(sub_step, memory)
     
     def v_update(self, sub_step, memory, type_n):
         print('value of type {} now updating:'.format(type_n))
