@@ -543,10 +543,10 @@ class NPAAgent:
         #         # print(type(cur_dict[j]))
         #         self.agents[i][j].load_all_grads(cur_dict[j])
     
-    def do_optimize(self):
-        for i in range(-self.n_step, 0):
-            for j in range(self.n_belief):
-                self.agents[i][j].do_optimize()
+    def do_optimize(self, substep, b):
+        # for i in range(-self.n_step, 0):
+            # for j in range(self.n_belief):
+        self.agents[substep][b].do_optimize()
     
     def all_zero_grad(self):
         for i in range(-self.n_step, 0):
@@ -768,9 +768,9 @@ class AtkNPAAgent:
         for i in range(self.n_type):
             self.agents[i].load_all_grads(grad_d[i], substep, b)
     
-    def do_optimize(self):
+    def do_optimize(self, substep, b):
         for i in range(self.n_type):
-            self.agents[i].do_optimize()
+            self.agents[i].do_optimize(substep, b)
     
     def all_zero_grad(self):
         for i in range(self.n_type):

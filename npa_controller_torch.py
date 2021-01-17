@@ -767,8 +767,8 @@ class NaiveController():
                     # print('atk:', atk_grad_d_sampler_i)
                 # print(i_samplers, 'load grad finish!')
                 # self.def_memory.load_samples('results/def_memory_round_{}_belief_{}_{}.pickle'.format(substep, b, sampler_name))
-            self.ppos[0].do_optimize()
-            self.ppos[1].do_optimize()
+            self.ppos[0].do_optimize(substep, b)
+            self.ppos[1].do_optimize(substep, b)
 
             # print('{}: episode {} start training.'.format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), i_episode), end = ' ')
                         
@@ -1040,10 +1040,13 @@ class NaiveController():
                 for atk_a_2 in range(4):
                     for def_a_2 in range(4):
                         
-                        best_atk_rew = -np.inf
+                        cur_max_def = -np.inf
+                        cur_max_atk = -np.inf
+                        def_strategies = None
 
                         for atk_a_3 in range(4):
                             cur_def_rew = 0
+                            cur_atk_rew = 0
 
                             for def_a_3 in range(5):
                                 atk_rews = [0 for _ in range(self.env.n_types)]
@@ -1063,6 +1066,7 @@ class NaiveController():
                                     rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
                                     is_first_round=True
                                     is_second_round=True
+                                    is_third_round = True
                                     need_get_type=False
                                     while not done:
                                         pre_rnns = []
@@ -1077,7 +1081,12 @@ class NaiveController():
                                         elif is_second_round:
                                             actions = [atk_a_2, def_a_2]
                                             is_second_round = False
+                                        elif is_third_round:
+                                            actions = [atk_a_3, def_a_3]
+                                            is_third_round = False
                                             need_get_type=True
+                                            if type(def_strategies) == NoneType:
+                                                _, def_strategy = train_agent.act(cur_round, states[1], train_memory)
                                         else:
                                             atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
                                             def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
@@ -1086,6 +1095,9 @@ class NaiveController():
                                         atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), -1, in_training=False)[3] for tar in range(self.env.n_targets)])
                                         
                                         states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
+
+                                        # if not is_second_round and is_third_round and type(def_strategies) == NoneType:
+                                            # def_strategies = self.env.
 
                                         if need_get_type:
                                             poss, belief = self.env.get_current_state()
@@ -1107,6 +1119,19 @@ class NaiveController():
                                         cur_round += 1
                                     atk_rews[cur_type] += atk_rew
                                     def_rews[cur_type] += def_rew
+                                tot_rew_atk = 0
+                                tot_rew_def = 0
+                                for type_i in range(self.env.n_types):
+                                    # if atk_rew[type_i] / type_cnt[type_i] > cur_max:
+                                        # cur_max = atk_rew[type_i]
+                                    tot_rew_atk += atk_rew[type_i] # / type_cnt[type_i]
+                                    tot_rew_def += def_rew[type_i]
+                                if tot_rew_atk > cur_max_atk:
+                                    cur_max_atk = tot_rew_atk
+                                if tot_rew_def > cur_max_def:
+                                    cur_max_def = tot_rew_def
+                                
+                                
 
                         full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
                         if type_cnt[0] > 0:
