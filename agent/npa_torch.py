@@ -280,7 +280,7 @@ class PPO:
     def load_all_grads(self, grad_d):
         for x in self.policy.named_parameters():
             if x[1].grad != None:
-                print(type(x[1].data.grad))
+                # print(type(x[1].data.grad))
                 x[1].grad += grad_d[x[0]]
             else:
                 x[1].grad = grad_d[x[0]]
