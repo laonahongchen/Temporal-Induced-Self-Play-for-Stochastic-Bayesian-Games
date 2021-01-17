@@ -238,7 +238,7 @@ class AvrgActorCritic():
         # return ret
         
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, value_lr=5e-2, entcoeff_decay = 0.99, max_n_hist = 10):
+    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, eps_clip, minibatch, type_dim = 0, entcoeff = 0.01, value_lr=5e-2, entcoeff_decay = 1., max_n_hist = 10):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -279,11 +279,11 @@ class PPO:
     
     def load_all_grads(self, grad_d):
         for x in self.policy.named_parameters():
-            if x[1].data.grad != None:
+            if x[1].grad != None:
                 print(type(x[1].data.grad))
-                x[1].data.grad += grad_d[x[0]]
+                x[1].grad += grad_d[x[0]]
             else:
-                x[1].data.grad = grad_d[x[0]]
+                x[1].grad = grad_d[x[0]]
     
     def all_zero_grad(self):
         self.optimizer.zero_grad()
@@ -674,7 +674,7 @@ class NPAAgent:
         
         # special mask for tag in tagging game
         # print('shape of action probs:')
-        # print(action_probs)
+        # print(action_probs.shape)
         if action_probs.shape[0] > 4 and observation[-3] < 0.5:
             action_probs[-1] = 0
         
