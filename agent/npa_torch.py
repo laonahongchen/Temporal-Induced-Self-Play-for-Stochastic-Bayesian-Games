@@ -267,20 +267,23 @@ class PPO:
         self.policy_old_weight = 0
     
     def get_state_dict(self):
-        return self.policy_old.state_dict()
+        return [self.policy_old.state_dict(), self.policy.state_dict()]
     
     def set_state_dict(self, sdb):
-        self.policy_old.load_state_dict(sdb)
+        self.policy_old.load_state_dict(sdb[0])
+        self.policy.load_state_dict(sdb[1])
     
     def get_all_grads(self):
         grad_d = {x[0]:x[1].grad for x in self.policy.named_parameters()}
-        # print(x[0], x[1].data.grad)
+        # print(grad_d)
         return grad_d
     
     def load_all_grads(self, grad_d):
         for x in self.policy.named_parameters():
-            if x[1].grad != None:
+            # if type(x[1].grad) != NoneType:
                 # print(type(x[1].data.grad))
+            # print(x[0], grad_d[x[0]])
+            if x[1].grad is not None:
                 x[1].grad += grad_d[x[0]]
             else:
                 x[1].grad = grad_d[x[0]]
@@ -418,6 +421,7 @@ class PPO:
 
                 # loss = -torch.min(surr1, surr2) - self.entcoeff*dist_entropy
                 loss = logprobs * cur_adv.detach() + old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
+                # print(old_nextvs[:10])
                 # loss = old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
                 loss = -loss- self.entcoeff*dist_entropy
                 # loss = -loss
