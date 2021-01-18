@@ -420,7 +420,7 @@ class PPO:
                 # cur_value_loss = self.MseLoss(state_values, rewards[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch].detach())
 
                 # loss = -torch.min(surr1, surr2) - self.entcoeff*dist_entropy
-                loss = logprobs * cur_adv.detach() + old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
+                loss = logprobs * cur_adv.detach() # + old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
                 # print(old_nextvs[:10])
                 # loss = old_nextvs[i_minibatch * self.minibatch: (i_minibatch + 1) * self.minibatch]
                 loss = -loss- self.entcoeff*dist_entropy
@@ -789,7 +789,7 @@ class AtkNPAAgent:
         self.agents[type_n].update(sub_step, memory)
     
     def v_update(self, sub_step, memory, type_n):
-        print('value of type {} now updating:'.format(type_n))
+        # print('value of type {} now updating:'.format(type_n))
         return self.agents[type_n].v_update(sub_step, memory)
 
     def act(self, step, observation, memory, start_num = -1, type_n=None, in_training=False):
