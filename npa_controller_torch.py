@@ -26,8 +26,7 @@ from agent.npa_torch import device
 
 import subprocess
 import math
-
-import pickle
+import pickle5 as pickle
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
@@ -881,7 +880,7 @@ class NaiveController():
                             v_loss, tot_loss = 0, 0
                             for type_i in range(len(self.atk_memorys)):
                                 if len(self.atk_memorys[type_i].rewards) > 1:
-                                    print('atk type {} trained'.format(type_i))
+                                    # print('atk type {} trained'.format(type_i))
 
                                     v_loss_t = self.ppos[0].v_update(substep, self.atk_memorys[type_i], type_i)
                                     cntupd += 1
@@ -1041,13 +1040,14 @@ class NaiveController():
                 for atk_a_2 in range(4):
                     for def_a_2 in range(4):
                         
-                        cur_max_def = -np.inf
-                        cur_max_atk = -np.inf
+                        cur_max_def = [-np.inf for _ in range(self.env.n_types)]
+                        cur_max_atk = [-np.inf for _ in range(self.env.n_types)]
                         def_strategies = None
+                        type_possis = None
 
                         for atk_a_3 in range(4):
-                            cur_def_rew = 0
-                            cur_atk_rew = 0
+                            cur_def_rew = [0 for _ in range(self.env.n_types)]
+                            cur_atk_rew = [0 for _ in range(self.env.n_types)]
 
                             for def_a_3 in range(5):
                                 atk_rews = [0 for _ in range(self.env.n_types)]
@@ -1088,6 +1088,7 @@ class NaiveController():
                                             need_get_type=True
                                             if type(def_strategies) == NoneType:
                                                 _, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+                                                type_possis = self.env.get_current_state()[1]
                                         else:
                                             atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
                                             def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
@@ -1120,29 +1121,39 @@ class NaiveController():
                                         cur_round += 1
                                     atk_rews[cur_type] += atk_rew
                                     def_rews[cur_type] += def_rew
-                                tot_rew_atk = 0
-                                tot_rew_def = 0
-                                for type_i in range(self.env.n_types):
+                                    type_cnt[cur_type] += 1
+                                # tot_rew_atk = 0
+                                # tot_rew_def = 0
+                                # for type_i in range(self.env.n_types):
                                     # if atk_rew[type_i] / type_cnt[type_i] > cur_max:
                                         # cur_max = atk_rew[type_i]
-                                    tot_rew_atk += atk_rew[type_i] # / type_cnt[type_i]
-                                    tot_rew_def += def_rew[type_i]
-                                if tot_rew_atk > cur_max_atk:
-                                    cur_max_atk = tot_rew_atk
-                                if tot_rew_def > cur_max_def:
-                                    cur_max_def = tot_rew_def
-                                
-                                
+                                    # tot_rew_atk += atk_rew[type_i] # / type_cnt[type_i]
+                                    # tot_rew_def += def_rew[type_i]
+                                # if tot_rew_atk > cur_max_atk:
+                                #     cur_max_atk = tot_rew_atk
+                                # if tot_rew_def > cur_max_def:
+                                #     cur_max_def = tot_rew_def
+                                for type_i in range(self.env.n_types):
+                                    if type_cnt[type_i] > 0:
+                                        cur_def_rew += def_strategies[def_a_3] * def_rews[type_i] / type_cnt[type_i]
+                                        cur_atk_rew += def_strategies[def_a_3] * atk_rews[type_i] / type_cnt[type_i]
+                            for type_i in range(self.env.n_types):
+                                if cur_atk_rew[type_i] > cur_max_atk[type_i]:
+                                    cur_max_atk[type_i] = cur_atk_rew[type_i]
+                                    cur_max_def[type_i] = cur_def_rew[type_i]    
 
-                        full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
-                        if type_cnt[0] > 0:
-                            full_atks[0].append(atk_rews[0] / type_cnt[0])
-                        else:
-                            full_atks[0].append(0.)
-                        if type_cnt[1] > 0:
-                            full_atks[1].append(atk_rews[1] / type_cnt[1])
-                        else:
-                            full_atks[1].append(0.)
+                        # full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
+                        full_defs.append(def_rew[0] * type_possis[0] + def_rew[1] * type_possis[1])
+                        full_atks[0].append(cur_max_atk[0])
+                        full_atks[1].append(cur_max_atk[1])
+                        # if type_cnt[0] > 0:
+                        #     full_atks[0].append(atk_rews[0] / type_cnt[0])
+                        # else:
+                        #     full_atks[0].append(0.)
+                        # if type_cnt[1] > 0:
+                        #     full_atks[1].append(atk_rews[1] / type_cnt[1])
+                        # else:
+                        #     full_atks[1].append(0.)
         print(full_defs)
         print(full_atks)
                         # for type_i in range(self.env.n_types):
