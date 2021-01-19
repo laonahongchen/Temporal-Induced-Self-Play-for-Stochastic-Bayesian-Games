@@ -556,7 +556,7 @@ class NaiveController():
         b2 = float(b2)
         b = torch.Tensor([b1, b2])
 
-        states, _, _ = self.env.reset_to_state_with_type((atk_p, def_p), b, 0)
+        states, _, _ = self.env.reset_to_state_with_type(cur_round, (atk_p, def_p), b, 0)
 
         print('test state is:')
         print(states)
@@ -907,7 +907,7 @@ class NaiveController():
         save_model(def_dict, 'models/def_{}_round_{}_belief_{}.pickle'.format( exp_name, substep, b))
         # save_model(all_rewards_in_train, 'results/reward_{}_round_{}_belief_{}.pickle'.format(exp_name, substep, b))
     
-    def sub_game_exploitability(self, single_train_round=20000, episodes_test=100, exp_name=None):
+    def sub_game_exploitability(self, single_train_round=2000, episodes_test=100, exp_name=None):
         if exp_name != None:
             self.load_all_models(exp_name)
 
@@ -1059,7 +1059,7 @@ class NaiveController():
                                     cur_round = 0
                                     # states, _, _ = self.env.reset()
                                     print('new episode:')
-                                    states, _, _ = self.env.reset_to_state((np.array([0, 4]), np.array([1, 4])), torch.Tensor(self.env.prior))
+                                    states, _, _ = self.env.reset_to_state(cur_round, (np.array([0, 4]), np.array([1, 4])), torch.Tensor(self.env.prior))
                                     # states, _, _ = self.env.sub_reset(0, self.env.prior)
                                     cur_type = self.env.atk_type
                                     done = False
@@ -1107,7 +1107,7 @@ class NaiveController():
 
                                         if need_get_type:
                                             poss, belief = self.env.get_current_state()
-                                            states, _, _ = self.env.reset_to_state(poss, belief)
+                                            states, _, _ = self.env.reset_to_state(cur_round, poss, belief)
                                             cur_type = self.env.atk_type
                                             type_cnt[cur_type] += 1
                                             need_get_type = False

@@ -159,9 +159,10 @@ class TaggingEnv(BaseEnv):
         # print(self.att_p, self.def_p)
         return (np.copy(self.att_p), np.copy(self.def_p)), self.belief
     
-    def reset_to_state(self, pos, belief):
+    def reset_to_state(self, round, pos, belief):
         # print('reset to state')
         # print(pos)
+        self.round_cnt = round
         self.att_p, self.def_p = np.copy(pos)
         self.atk_type = self.goal = self.type = np.random.choice(self.n_targets, p=belief)
         # self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
@@ -170,9 +171,10 @@ class TaggingEnv(BaseEnv):
         self.last_obs_n = self._get_obs()
         return self.last_obs_n, None, None # , self.probs, self.ac_history
     
-    def reset_to_state_with_type(self, pos, belief, type_s):
+    def reset_to_state_with_type(self, round, pos, belief, type_s):
         # print('reset to state with type')
         # print(pos)
+        self.round_cnt = round
         self.att_p, self.def_p = np.copy(pos)
         self.atk_type = self.goal = self.type = type_s # np.random.choice(self.n_targets, p=belief)
         # self.type_ob = np.zeros(shape=self.n_types, dtype=np.float32)
