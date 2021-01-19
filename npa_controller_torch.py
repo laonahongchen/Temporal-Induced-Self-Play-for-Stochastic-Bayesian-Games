@@ -26,7 +26,8 @@ from agent.npa_torch import device
 
 import subprocess
 import math
-import pickle5 as pickle
+# import pickle5 as pickle
+import pickle
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
@@ -1086,8 +1087,8 @@ class NaiveController():
                                             actions = [atk_a_3, def_a_3]
                                             is_third_round = False
                                             need_get_type=True
-                                            if type(def_strategies) == NoneType:
-                                                _, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+                                            if def_strategies is None:
+                                                _, def_strategies = train_agent.act(cur_round, states[1], train_memory)
                                                 type_possis = self.env.get_current_state()[1]
                                         else:
                                             atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
