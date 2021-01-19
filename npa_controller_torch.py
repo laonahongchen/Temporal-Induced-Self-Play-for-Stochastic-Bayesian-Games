@@ -1070,7 +1070,7 @@ class NaiveController():
                                     is_second_round=True
                                     is_third_round = True
                                     need_get_type=False
-                                    if def_strategies[def_a_3] < 1e-6:
+                                    if def_strategies is not None and def_strategies[def_a_3] < 1e-6:
                                         break
                                     while not done:
                                         pre_rnns = []
