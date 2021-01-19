@@ -1091,7 +1091,7 @@ class NaiveController():
                                             need_get_type=True
                                             if def_strategies is None:
                                                 _, def_strategies = train_agent.act(cur_round, states[1], train_memory)
-                                                type_possis = self.env.get_current_state()[1]
+                                                type_possis = self.env.get_cur_state()[1]
                                         else:
                                             atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=cur_type)
                                             def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
@@ -1106,7 +1106,7 @@ class NaiveController():
                                             # def_strategies = self.env.
 
                                         if need_get_type:
-                                            poss, belief = self.env.get_current_state()
+                                            poss, belief = self.env.get_cur_state()
                                             states, _, _ = self.env.reset_to_state(cur_round, poss, belief)
                                             cur_type = self.env.atk_type
                                             type_cnt[cur_type] += 1
