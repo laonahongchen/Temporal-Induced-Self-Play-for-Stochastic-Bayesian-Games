@@ -1070,6 +1070,8 @@ class NaiveController():
                                     is_second_round=True
                                     is_third_round = True
                                     need_get_type=False
+                                    if def_strategies[def_a_3] < 1e-6:
+                                        break
                                     while not done:
                                         pre_rnns = []
                                         pre_rnns.append(rnn_historys[0])
@@ -1095,6 +1097,7 @@ class NaiveController():
                                             def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
                                             # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
                                             actions = [atk_action, def_action]
+                                        
                                         atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), -1, in_training=False)[3] for tar in range(self.env.n_targets)])
                                         
                                         states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
@@ -1136,6 +1139,7 @@ class NaiveController():
                                 #     cur_max_def = tot_rew_def
                                 for type_i in range(self.env.n_types):
                                     if type_cnt[type_i] > 0:
+                                        print(def_strategies, def_rews, type_cnt)
                                         cur_def_rew += def_strategies[def_a_3] * def_rews[type_i] / type_cnt[type_i]
                                         cur_atk_rew += def_strategies[def_a_3] * atk_rews[type_i] / type_cnt[type_i]
                             for type_i in range(self.env.n_types):
