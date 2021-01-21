@@ -377,85 +377,211 @@ class NaiveController():
         # atk_rews = [0 for _ in range(self.env.n_types)]
         # def_rews = [0 for _ in range(self.env.n_types)]
         # type_cnt = [0 for _ in range(self.env.n_types)]
-
+        
         full_defs = []
+        
         full_atks = [[] for _ in range(2)]
 
-        # first_round_actions = []
         for atk_a in range(4):
             for def_a in range(4):
                 for atk_a_2 in range(4):
                     for def_a_2 in range(4):
-                        atk_rews = [0 for _ in range(self.env.n_types)]
-                        def_rews = [0 for _ in range(self.env.n_types)]
-                        type_cnt = [0 for _ in range(self.env.n_types)]
-                        for i in range(episodes_test):
-                            cur_round = 0
-                            # states, _, _ = self.env.reset()
-                            states, _, _ = self.env.reset_to_state((np.array([0, 4]), np.array([1, 4])), self.env.prior)
-                            print('new episode:, prior{}'.format(self.env.prior))
-                            # states, _, _ = self.env.sub_reset(0, self.env.prior)
-                            cur_type = self.env.atk_type
-                            type_cnt[cur_type] += 1
-                            done = False
-                            atk_rew = 0
-                            def_rew = 0
-                            rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
-                            is_first_round=True
-                            is_second_round=True
-                            need_get_type=False
-                            while not done:
-                                pre_rnns = []
-                                pre_rnns.append(rnn_historys[0])
-                                pre_rnns.append(rnn_historys[1])
+                        
+                        cur_max_def = [-np.inf for _ in range(self.env.n_types)]
+                        cur_max_atk = [-np.inf for _ in range(self.env.n_types)]
+                        def_strategies = None
+                        type_possis = None
 
-                                if is_first_round:
-                                    actions = [atk_a, def_a]
-                                    is_first_round = False
-                                elif is_second_round:
-                                    actions = [atk_a_2, def_a_2]
-                                    is_second_round = False
-                                    need_get_type = True
-                                else:
-                                    atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
-                                    def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
-                                    # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
-                                    actions = [atk_action, def_action]
-                                atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), pre_rnns[0], actions[0], one_hot(self.env.n_targets, tar), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
+                        for atk_a_3 in range(4):
+                            cur_def_rew = [0 for _ in range(self.env.n_types)]
+                            cur_atk_rew = [0 for _ in range(self.env.n_types)]
+
+                            for def_a_3 in range(5):
+                                atk_rews = [0 for _ in range(self.env.n_types)]
+                                def_rews = [0 for _ in range(self.env.n_types)]
+                                type_cnt = [0 for _ in range(self.env.n_types)]
+
+                                for i in range(episodes_test):
+                                    cur_round = 0
+                                    # states, _, _ = self.env.reset()
+                                    print('new episode:')
+                                    states, _, _ = self.env.reset_to_state(cur_round, (np.array([0, 4]), np.array([1, 4])), torch.Tensor(self.env.prior))
+                                    # states, _, _ = self.env.sub_reset(0, self.env.prior)
+                                    cur_type = self.env.atk_type
+                                    done = False
+                                    atk_rew = 0
+                                    def_rew = 0
+                                    rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
+                                    is_first_round=True
+                                    is_second_round=True
+                                    is_third_round = True
+                                    need_get_type=False
+                                    if def_strategies is not None and def_strategies[def_a_3] < 1e-6:
+                                        break
+                                    while not done:
+                                        pre_rnns = []
+                                        pre_rnns.append(rnn_historys[0])
+                                        pre_rnns.append(rnn_historys[1])
+
+                                        # atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
+                                        
+                                        if is_first_round:
+                                            actions = [atk_a, def_a]
+                                            is_first_round = False
+                                        elif is_second_round:
+                                            actions = [atk_a_2, def_a_2]
+                                            is_second_round = False
+                                        elif is_third_round:
+                                            actions = [atk_a_3, def_a_3]
+                                            is_third_round = False
+                                            need_get_type=True
+                                            if def_strategies is None:
+                                                _, def_strategies = train_agent.act(cur_round, states[1], train_memory)
+                                                type_possis = self.env.get_cur_state()[1]
+                                        else:
+                                            # atk_action, atk_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, -1,  type_n=cur_type)
+                                            # def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+                                            atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
+                                            def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+                                            # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
+                                            actions = [atk_action, def_action]
+                                        
+                                        atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), actions[0], tar, np.array([one_hot(self.env.n_targets, tar)]), -1, in_training=False)[3] for tar in range(self.env.n_targets)])
+                                        
+                                        states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
+
+                                        # if not is_second_round and is_third_round and type(def_strategies) == NoneType:
+                                            # def_strategies = self.env.
+
+                                        if need_get_type:
+                                            poss, belief = self.env.get_cur_state()
+                                            belief = belief.detach()
+                                            belief = belief / torch.sum(belief)
+                                            states, _, _ = self.env.reset_to_state(cur_round + 1, poss, belief)
+                                            cur_type = self.env.atk_type
+                                            type_cnt[cur_type] += 1
+                                            need_get_type = False
+                                        # print('atk_strategy:')
+                                        # # print(atk_strategy)
+                                        # for type_i in range(self.env.n_types):
+                                        #     _,  atk_t_strategy = self.ppos[0].act(cur_round, states[0], self.ppos[0].memory_ph, type_n=type_i)
+                                        #     print(atk_t_strategy)
+                                        # print('def_strategy:')
+                                        # print(def_strategy)
+
+                                        atk_rew += rew[0]
+                                        def_rew += rew[1]
+
+                                        cur_round += 1
+                                    atk_rews[cur_type] += atk_rew
+                                    def_rews[cur_type] += def_rew
+                                    type_cnt[cur_type] += 1
+                                # tot_rew_atk = 0
+                                # tot_rew_def = 0
+                                # for type_i in range(self.env.n_types):
+                                    # if atk_rew[type_i] / type_cnt[type_i] > cur_max:
+                                        # cur_max = atk_rew[type_i]
+                                    # tot_rew_atk += atk_rew[type_i] # / type_cnt[type_i]
+                                    # tot_rew_def += def_rew[type_i]
+                                # if tot_rew_atk > cur_max_atk:
+                                #     cur_max_atk = tot_rew_atk
+                                # if tot_rew_def > cur_max_def:
+                                #     cur_max_def = tot_rew_def
+                                for type_i in range(self.env.n_types):
+                                    if type_cnt[type_i] > 0:
+                                        print(def_strategies, def_rews, type_cnt)
+                                        cur_def_rew[type_i] += def_strategies[def_a_3] * def_rews[type_i] / type_cnt[type_i]
+                                        cur_atk_rew[type_i] += def_strategies[def_a_3] * atk_rews[type_i] / type_cnt[type_i]
+                            for type_i in range(self.env.n_types):
+                                if cur_atk_rew[type_i] > cur_max_atk[type_i]:
+                                    cur_max_atk[type_i] = cur_atk_rew[type_i]
+                                    cur_max_def[type_i] = cur_def_rew[type_i]    
+
+                        # full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
+                        full_defs.append(cur_max_def[0] * type_possis[0] + cur_max_def[1] * type_possis[1])
+                        full_atks[0].append(cur_max_atk[0])
+                        full_atks[1].append(cur_max_atk[1])
+
+        # full_defs = []
+        # full_atks = [[] for _ in range(2)]
+
+        # # first_round_actions = []
+        # for atk_a in range(4):
+        #     for def_a in range(4):
+        #         for atk_a_2 in range(4):
+        #             for def_a_2 in range(4):
+        #                 atk_rews = [0 for _ in range(self.env.n_types)]
+        #                 def_rews = [0 for _ in range(self.env.n_types)]
+        #                 type_cnt = [0 for _ in range(self.env.n_types)]
+        #                 for i in range(episodes_test):
+        #                     cur_round = 0
+        #                     # states, _, _ = self.env.reset()
+        #                     states, _, _ = self.env.reset_to_state((np.array([0, 4]), np.array([1, 4])), self.env.prior)
+        #                     print('new episode:, prior{}'.format(self.env.prior))
+        #                     # states, _, _ = self.env.sub_reset(0, self.env.prior)
+        #                     cur_type = self.env.atk_type
+        #                     type_cnt[cur_type] += 1
+        #                     done = False
+        #                     atk_rew = 0
+        #                     def_rew = 0
+        #                     rnn_historys = [torch.from_numpy(np.zeros((1, 1, self.n_latent_var))).float().to(device) for _ in range(self.env.n_agents)]
+        #                     is_first_round=True
+        #                     is_second_round=True
+        #                     need_get_type=False
+        #                     while not done:
+        #                         pre_rnns = []
+        #                         pre_rnns.append(rnn_historys[0])
+        #                         pre_rnns.append(rnn_historys[1])
+
+        #                         if is_first_round:
+        #                             actions = [atk_a, def_a]
+        #                             is_first_round = False
+        #                         elif is_second_round:
+        #                             actions = [atk_a_2, def_a_2]
+        #                             is_second_round = False
+        #                             need_get_type = True
+        #                         else:
+        #                             atk_action, rnn_historys[0], atk_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, rnn_historys[0], type_n=cur_type)
+        #                             def_action, def_strategy = train_agent.act(cur_round, states[1], train_memory)
+        #                             # atk_prob = torch.stack([self.ppos[0].evaluate(cur_round, self._get_atk_ob(tar, self.env.belief, states[0]), atk_action, tar, np.array([one_hot(self.env.n_targets, tar)]))[1].detach() for tar in range(self.env.n_targets)])
+        #                             actions = [atk_action, def_action]
+        #                         atk_prob = torch.stack([self.ppos[0].evaluate(self._get_atk_ob(tar, self.env.belief, states[0]), pre_rnns[0], actions[0], one_hot(self.env.n_targets, tar), tar, in_training=True)[1].detach() for tar in range(self.env.n_targets)])
 
                                 
-                                states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
-                                if need_get_type:
-                                    poss, belief = self.env.get_current_state()
-                                    states, _, _ = self.env.reset_to_state(poss, belief)
-                                    cur_type = self.env.atk_type
-                                    type_cnt[cur_type] += 1
-                                    need_get_type = False
-                                # print('atk_strategy:')
-                                # # print(atk_strategy)
-                                # for type_i in range(self.env.n_types):
-                                #     _, _, atk_t_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, pre_rnns[0], type_n=type_i)
-                                #     print(atk_t_strategy)
-                                # print('def_strategy:')
-                                # print(def_strategy)
+        #                         states, rew, done, _ = self.env.step(actions, atk_prob, verbose=True)
+        #                         if need_get_type:
+        #                             poss, belief = self.env.get_current_state()
+        #                             states, _, _ = self.env.reset_to_state(poss, belief)
+        #                             cur_type = self.env.atk_type
+        #                             type_cnt[cur_type] += 1
+        #                             need_get_type = False
+        #                         # print('atk_strategy:')
+        #                         # # print(atk_strategy)
+        #                         # for type_i in range(self.env.n_types):
+        #                         #     _, _, atk_t_strategy = self.ppos[0].act(states[0], self.ppos[0].memory_ph, pre_rnns[0], type_n=type_i)
+        #                         #     print(atk_t_strategy)
+        #                         # print('def_strategy:')
+        #                         # print(def_strategy)
 
-                                atk_rew += rew[0]
-                                def_rew += rew[1]
+        #                         atk_rew += rew[0]
+        #                         def_rew += rew[1]
 
-                                cur_round += 1
-                            atk_rews[cur_type] += atk_rew
-                            def_rews[cur_type] += def_rew
-                        full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
-                        if type_cnt[0] > 0:
-                            full_atks[0].append(atk_rews[0] / type_cnt[0])
-                        else:
-                            full_atks[0].append(0.)
-                        if type_cnt[1] > 0:
-                            full_atks[1].append(atk_rews[1] / type_cnt[1])
-                        else:
-                            full_atks[1].append(0.)
+        #                         cur_round += 1
+        #                     atk_rews[cur_type] += atk_rew
+        #                     def_rews[cur_type] += def_rew
+        #                 full_defs.append((def_rews[0] + def_rews[1]) * 1./ (type_cnt[0] + type_cnt[1]))
+        #                 if type_cnt[0] > 0:
+        #                     full_atks[0].append(atk_rews[0] / type_cnt[0])
+        #                 else:
+        #                     full_atks[0].append(0.)
+        #                 if type_cnt[1] > 0:
+        #                     full_atks[1].append(atk_rews[1] / type_cnt[1])
+        #                 else:
+        #                     full_atks[1].append(0.)
         print(full_defs)
+        print(torch.mean(full_defs))
         print(full_atks)
+        print(torch.mean(full_atks[0], full_atks[1]))
 
         # for type_i in range(self.env.n_types):
         #     if type_cnt[type_i] != 0:
