@@ -579,9 +579,9 @@ class NaiveController():
         #                 else:
         #                     full_atks[1].append(0.)
         print(full_defs)
-        print(torch.mean(full_defs))
         print(full_atks)
-        print(torch.mean(full_atks[0], full_atks[1]))
+        print(torch.mean(torch.Tensor(full_defs)))
+        print(torch.mean(torch.Tensor(full_atks[0]), torch.Tensor(full_atks[1])))
 
         # for type_i in range(self.env.n_types):
         #     if type_cnt[type_i] != 0:
